@@ -47,6 +47,21 @@ type unit_flag = (unit, bool) flag
 
 type 'a string_flag = ('a, string) flag
 
+let override f = (function _ -> f)
+
+let id x = x
+
+let pp_print_string = Format.pp_print_string
+
+let pp_print_int = Format.pp_print_int
+
+let pp_print_bool ppf = 
+  let p = Format.fprintf ppf in 
+  function
+    | true -> p "true"
+    | false -> p "false"
+
+
 (* ********************************************************************** *)
 
 type smtsolver = [ `Z3_SMTLIB | `Z3_API | `CVC4_SMTLIB | `CVC4_API | `Yices ]
@@ -74,7 +89,7 @@ let smtsolver_flag =
   { longname = "smtsolver";
     shortname = None;
     value = `Z3_SMTLIB;
-    of_arg = (function _ -> smtsolver_of_string);
+    of_arg = override smtsolver_of_string;
     pp = pp_print_smtsolver }
 
 (* ********************************************************************** *)
@@ -120,13 +135,93 @@ let pp_print_smtlogic ppf =
     | `QF_UFLRA -> p "LRA"
     | `detect -> p "detect"
 
-
 let smtlogic_flag = 
   { longname = "smtlogic";
     shortname = None;
     value = `detect;
-    of_arg = (function _ -> smtlogic_of_string);
+    of_arg = override smtlogic_of_string;
     pp = pp_print_smtlogic }
+
+(* ********************************************************************** *)
+
+let z3_bin = 
+  { longname = "z3_bin";
+    shortname = None;
+    value = "@Z3_BIN@";
+    of_arg = override id;
+    pp = pp_print_string }
+    
+(* ********************************************************************** *)
+
+let cvc4_bin = 
+  { longname = "cvc4_bin";
+    shortname = None;
+    value = "@CVC4_BIN@";
+    of_arg = override id;
+    pp = pp_print_string }
+    
+(* ********************************************************************** *)
+
+let pdr_check_inductive =
+  { longname = "pdr_check_inductive";
+    shortname = None;
+    value = true;
+    of_arg = override id;
+    pp = pp_print_bool }
+
+(* ********************************************************************** *)
+
+let interpreter_steps =
+  { longname = "interpreter_steps";
+    shortname = None;
+    value = 0;
+    of_arg = override id;
+    pp = pp_print_int }
+
+
+(* ********************************************************************** *)
+
+
+let handle_flag _ pos = succ pos
+
+let anon_arg_fun _ = ()
+
+
+
+let rec handle_anon_args argv pos = 
+
+  (* Stop if at the end of the arguments *)
+  if pos >= Array.length argv then () else
+    
+    (* Get next string *)
+    let arg = argv.(pos) in
+    
+    anon_arg_fun arg;
+
+    handle_anon_args argv (succ pos)
+
+
+let rec parse_argv argv pos = 
+
+  (* Stop if at the end of the arguments *)
+  if pos >= Array.length argv then () else
+
+    (* Get next string *)
+    let arg = argv.(pos) in
+
+    (* String starts with a dash and is not a double dash *)
+    if (String.length arg > 0 && String.get arg 0 = '-') && not (arg = "--") then
+      
+      (* Handle flag and return next position *)
+      let pos' = handle_flag argv pos in
+      
+      (* Continue with next arguments *)
+      parse_argv argv pos'
+
+    (* End of options and beginning of anonymous arguments *)
+    else
+
+      handle_anon_args argv pos
 
 
 
