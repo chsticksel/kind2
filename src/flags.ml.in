@@ -26,15 +26,16 @@
 
 open Lib
 
-(*
 
+(* A flag is polymorphic in two types: its input type and the type of
+   its value. *)
 type ('a, 'b) flag =
   { longname : string;
     shortname : string option;
     mutable value : 'a;
     of_arg : 'a -> 'b -> 'a;
     pp : Format.formatter -> 'a -> unit }
-    
+
 
 type int_flag = (int, int) flag 
 
@@ -46,7 +47,7 @@ type unit_flag = (unit, bool) flag
 
 type 'a string_flag = ('a, string) flag
 
-
+(* ********************************************************************** *)
 
 type smtsolver = [ `Z3_SMTLIB | `Z3_API | `CVC4_SMTLIB | `CVC4_API | `Yices ]
 
@@ -76,6 +77,7 @@ let smtsolver_flag =
     of_arg = (function _ -> smtsolver_of_string);
     pp = pp_print_smtsolver }
 
+(* ********************************************************************** *)
 
 let kind_module_of_string = function
   | "PDR" -> `PDR
@@ -84,7 +86,6 @@ let kind_module_of_string = function
   | "INVGEN" -> `INVGEN
   | "interpreter" -> `Interpreter
   | _ -> raise (Invalid_argument "smtsolver_of_string")
-
 
 let pp_print_kind_module ppf = 
   let p = Format.fprintf ppf in 
@@ -95,7 +96,6 @@ let pp_print_kind_module ppf =
     | `INVGEN -> p "INVGEN"
     | `Interpreter -> p "interpreter"
 
-
 let enable_flag = 
   { longname = "enable";
     shortname = Some "e";
@@ -103,7 +103,32 @@ let enable_flag =
     of_arg = (function curval -> (function arg -> kind_module_of_string arg :: curval));
     pp = (pp_print_list pp_print_kind_module ",@ ") }
 
-*)
+(* ********************************************************************** *)
+
+type smtlogic = [ `QF_UFLIA | `QF_UFLRA | `detect ]
+    
+let smtlogic_of_string = function
+  | "LIA" -> `QF_UFLIA
+  | "LRA" -> `QF_UFLRA
+  | "detect" -> `detect
+  | _ -> raise (Invalid_argument "smtlogic_of_string")
+
+let pp_print_smtlogic ppf =
+  let p = Format.fprintf ppf in 
+  function 
+    | `QF_UFLIA -> p "LIA"
+    | `QF_UFLRA -> p "LRA"
+    | `detect -> p "detect"
+
+
+let smtlogic_flag = 
+  { longname = "smtlogic";
+    shortname = None;
+    value = `detect;
+    of_arg = (function _ -> smtlogic_of_string);
+    pp = pp_print_smtlogic }
+
+
 
 
 (* ********************************************************************** *)
@@ -153,7 +178,7 @@ let timeout_virtual_default = 0.
 
 (* ********** *) 
 
-type smtsolver = [ `Z3_SMTLIB | `Z3_API | `CVC4_SMTLIB | `CVC4_API | `Yices ]
+(* type smtsolver = [ `Z3_SMTLIB | `Z3_API | `CVC4_SMTLIB | `CVC4_API | `Yices ] *)
     
 let smtsolver_of_string = function
   | "Z3" -> `Z3_SMTLIB
@@ -178,7 +203,7 @@ let smtsolver_default = `Z3_SMTLIB
 
 (* ********** *) 
 
-type smtlogic = [ `QF_UFLIA | `QF_UFLRA | `detect ]
+(* type smtlogic = [ `QF_UFLIA | `QF_UFLRA | `detect ] *)
     
 let smtlogic_of_string = function
   | "LIA" -> `QF_UFLIA
