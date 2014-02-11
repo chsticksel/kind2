@@ -19,7 +19,8 @@ true: -traverse
 <kind1/*.ml>: debug,annot
 
 # Use Unix, Str, ZMQ and Thread modules  
-<*.native>: use_nums,use_unix,use_str,use_ZMQ,thread
+<*.native>: package(num),package(unix),package(str),use_ZMQ,thread,package(cmdliner)
+# use_nums,use_unix,use_str,use_ZMQ,thread
 <*.byte>: use_nums,use_unix,use_str,use_ZMQ,thread
 <*.top>: debug,use_nums,use_unix,use_str,use_ZMQ,thread
 
@@ -27,6 +28,8 @@ true: -traverse
 <messaging.ml>: thread,use_ZMQ
 <messaging.mli>: thread
 <lib.ml>: thread
+
+<test_kind2.ml>: package(cmdliner)
 
 # Obsolete 
 
