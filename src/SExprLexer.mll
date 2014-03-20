@@ -173,7 +173,9 @@ and scan_string buf start = parse
       {
         let ofs = lexeme_start lexbuf in
         let len = lexeme_end lexbuf - ofs in
-        Buffer.add_substring buf lexbuf.lex_buffer ofs len;
+        (* This can fail with Invalid_argument *)
+        (* Buffer.add_substring buf lexbuf.lex_buffer ofs len; *)
+        Buffer.add_string buf (lexeme lexbuf);
         scan_string buf start lexbuf
       }
   | eof
