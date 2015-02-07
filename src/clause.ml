@@ -59,6 +59,7 @@ type prop_set =
     
   } 
 
+
 (* ********************************************************************** *)
 (* Activation literals                                                    *)
 (* ********************************************************************** *)
@@ -205,9 +206,14 @@ let actlit_symbol_of_frame k = actlit_and_symbol_of_frame k |> fst
 (* Create three fresh activation literals for a list of literals and
    declare in the given solver instance *)
 let clause_of_literals solver parent literals =
+
+  (* Add literals to set to sort and eliminate duplicates *)
+  let literals' =
+    Term.TermSet.elements (Term.TermSet.of_list literals)
+  in
   
   (* Disjunction of literals *)
-  let term = Term.mk_or literals in
+  let term = Term.mk_or literals' in
 
   (* Create activation literals for positive clause *)
   let (actlit_p0, actlit_p1) =
@@ -253,8 +259,17 @@ let rec parent_of_clause = function
   | { parent = None } as clause -> clause 
   | { parent = Some c } -> parent_of_clause c
 
+(* Return number of literals in clause *)
 let length_of_clause { literals } = List.length literals
 
+
+let compare c1 c2 = 0 (* TODO: Compare two clauses lexicographically *)
+
+(* TODO: make ClauseOrdered module, make ClauseMap, then ClauseTrie *)
+
+module ClauseMap = Map.Make(struct type z = t type t = z let compare = compare end)
+
+module ClauseTrie = Trie.Make(ClauseMap)
   
 (* ********************************************************************** *)
 (* Property sets                                                          *)    

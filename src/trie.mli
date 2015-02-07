@@ -123,7 +123,7 @@ module type S = sig
   val max_binding: 'a t -> (key * 'a)
 
   (* val choose: 'a t -> (key * 'a) *)
-  (* val split: key -> 'a t -> 'a t * 'a option * 'a t *)
+  val split: key -> 'a t -> 'a t * 'a option * 'a t
 
   (** Return the value for the key in the trie *)
   val find : key -> 'a t -> 'a
@@ -185,7 +185,7 @@ module type S = sig
       trie with all entries for keys that are subsets of [k]
       removed. *)
   val subsume : 'a t -> key -> 'a t
-    
+
 end
 
 

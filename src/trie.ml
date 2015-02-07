@@ -411,6 +411,9 @@ module Make (M : M) = struct
 
     min_binding' [] t
 
+  (* TODO: Implement split *)
+  let split = assert false
+      
 
   (* TODO: Rewrite fold2, map2 and iter2 with Map.merge to avoid using
      Map.bindings *)
@@ -576,6 +579,7 @@ module Make (M : M) = struct
 
 end
 
+(*
 
 (* Test code *)
 module CharMap = Map.Make(Char);;
@@ -765,3 +769,4 @@ T.bindings (T.subsume t ['b';'c']);;
 T.bindings (T.subsume t ['a';'c']);;
 
     
+*)
