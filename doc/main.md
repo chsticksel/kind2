@@ -1,1 +1,1 @@
-This is the main [sub.md]
+This is the main [Sub](sub.md)
