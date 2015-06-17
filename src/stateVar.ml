@@ -73,13 +73,13 @@ type t = (state_var, state_var_prop) Hashcons.hash_consed
 module State_var_node = struct 
 
   (* State variable node *)
-  type t = state_var_node
+  type 'a t = state_var_node
 
   (* Properties of state variable *)
   type prop = state_var_prop
 
   (* Hashing for state variables is hashing of strings *)
-  let hash = Hashtbl.hash_param 100 100
+  let hash x = Hashtbl.hash_param 100 100 x
 
   (* Equality of state variables is comparison of strings *)
   let equal = (=)

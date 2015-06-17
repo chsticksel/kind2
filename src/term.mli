@@ -44,10 +44,10 @@ module T : Ltree.S
   and type sort = Type.t
 
 (** Terms are hashconsed abstract syntax trees *)
-type t = T.t
+type t = T.safe T.t
     
 (** Terms are hashconsed abstract syntax trees *)
-type lambda = T.lambda
+type lambda = T.safe T.lambda
 
 (** {1 Hashtables, maps and sets} *)
 
@@ -76,7 +76,7 @@ module TermMap : Map.S with type key = t
 (** {1 Constructors} *)
 
 (** Create a hashconsed term *)
-val mk_term : T.t_node -> t
+val mk_term : T.safe T.t_node -> t
 
 (** Create a hashconsed lambda expression *)
 val mk_lambda : Var.t list -> t -> lambda
@@ -438,7 +438,7 @@ val eval_lambda : lambda -> t list -> t
     shifted. Therefore, the function [f] is called with the number of
     let bindings the subterm is under as first argument, so that the
     indexes can be adjusted in the subterm if necessary. *)
-val map : (int -> T.t -> T.t) -> t -> t
+val map : (int -> T.unsafe T.t -> 'a T.t) -> t -> t
 
 (** Convert [(= 0 (mod t n))] to [(divisble n t)]
 

@@ -75,28 +75,28 @@ val stats : ('a, 'b) t -> int * int * int * int * int * int
 
 module type HashedType =
   sig
-    type t
+    type 'a t
     type prop
-    val equal : t -> t -> bool
-    val hash : t -> int
+    val equal : 'a t -> 'a t -> bool
+    val hash : 'a t -> int
   end
 
 module type S =
   sig
-    type key
+    type 'a key
     type prop
-    type t
-    exception Key_not_found of key
-    val create : int -> t
-    val clear : t -> unit
-    val hashcons : t -> key -> prop -> (key, prop) hash_consed
-    val find : t -> key -> (key, prop) hash_consed
-    val iter : ((key, prop) hash_consed -> unit) -> t -> unit
-    val fold : ((key, prop) hash_consed -> 'a -> 'a) -> t -> 'a -> 'a
-    val stats : t -> int * int * int * int * int * int
+    type 'a t
+    exception Key_not_found
+    val create : int -> 'a t
+    val clear : 'a t -> unit
+    val hashcons : 'a t -> 'a key -> prop -> ('a key, prop) hash_consed
+    val find : 'a t -> 'a key -> ('a key, prop) hash_consed
+    val iter : (('a key, prop) hash_consed -> unit) -> 'a t -> unit
+    val fold : (('a key, prop) hash_consed -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val stats : 'a t -> int * int * int * int * int * int
   end
 
-module Make(H : HashedType) : (S with type key = H.t and type prop = H.prop)
+module Make(H : HashedType) : (S with type 'a key = 'a H.t and type prop = H.prop)
 
 (* 
    Local Variables:

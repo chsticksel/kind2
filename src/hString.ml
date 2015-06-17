@@ -39,7 +39,7 @@ type t = (string_node, string_prop) Hashcons.hash_consed
 module String_node = struct
 
   (* String type *)
-  type t = string_node
+  type 'a t = string_node
 
   (* No properties for a string *)
   type prop = string_prop

@@ -65,7 +65,7 @@ and t = (kindtype_node, kindtype_prop) Hashcons.hash_consed
 module Kindtype_node = struct 
 
   (* Type node *)
-  type t = kindtype_node
+  type 'a t = kindtype_node
 
   (* Properties of type *)
   type prop = kindtype_prop

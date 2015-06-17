@@ -127,7 +127,7 @@ type t = (symbol_node, symbol_prop) Hashcons.hash_consed
 module Symbol_node = struct
 
   (* The type of a symbol *)
-  type t = symbol
+  type 'a t = symbol
 
   (* Properties of a symbol
 

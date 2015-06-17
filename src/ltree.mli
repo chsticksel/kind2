@@ -132,34 +132,37 @@ sig
   (** Attribute *)
   type attr
 
+  type safe
+  type unsafe
+
   (** Lambda abstraction over symbols, variables and sort of the types
       given. Values of the type cannot be constructed outside this
       module in order to maintain invariants about the data type. *)
-  type lambda_node = private L of sort list * t
+  type 'a lambda_node = private L of sort list * 'a t
 
   (** Hashconsed lambda abstraction *)
-  and lambda = private (lambda_node, unit) Hashcons.hash_consed
+  and 'a lambda = private ('a lambda_node, unit) Hashcons.hash_consed
 
   (** Abstract syntax term over symbols, variables and sort of the
       types given. Values of the type cannot be constructed outside
       this module in order to maintain invariants about the data
       type. Use the constructors {!mk_var}, {!mk_const}, {!mk_app},
       {!mk_let}, {!mk_exists} and {!mk_forall}. *)
-  and t_node = private
-      FreeVar of var
+  and 'a t_node = private
+    | FreeVar of var
     | BoundVar of int
     | Leaf of symbol
-    | Node of symbol * t list
-    | Let of lambda * t list
-    | Exists of lambda
-    | Forall of lambda
-    | Annot of t * attr
+    | Node of symbol * 'a t list
+    | Let of 'a lambda * 'a t list
+    | Exists of 'a lambda
+    | Forall of 'a lambda
+    | Annot of 'a t * attr
 
   (** Properties of a term *)
   and t_prop = private { bound_vars : int list } 
 
   (** Hashconsed abstract syntax term *)
-  and t = private (t_node, t_prop) Hashcons.hash_consed
+  and 'a t = private ('a t_node, t_prop) Hashcons.hash_consed
 
   (** Term over symbols, variables and sort of the types given where
       the topmost symbol is not a binding 
@@ -170,73 +173,73 @@ sig
   and flat = private 
     | Var of var
     | Const of symbol 
-    | App of symbol * t list
-    | Attr of t * attr
+    | App of symbol * safe t list
+    | Attr of safe t * attr
 
   (** Comparison function on terms *)
-  val compare : t -> t -> int
+  val compare : 'a t -> 'a t -> int
 
   (** Equality function on terms *)
-  val equal : t -> t -> bool
+  val equal : 'a t -> 'a t -> bool
 
   (** Hash function on terms *)
-  val hash : t -> int
+  val hash : 'a t -> int
 
   (** Unique identifier for term *)
-  val tag : t -> int
+  val tag : 'a t -> int
 
   (** Constructor for a lambda expression *)
-  val mk_lambda : var list -> t -> lambda
+  val mk_lambda : var list -> 'a t -> 'a lambda
 
   (** Beta-evaluate a lambda expression *)
-  val eval_lambda : lambda -> t list -> t
+  val eval_lambda : 'a lambda -> 'a t list -> 'a t
 
   (** Constructor for a term *)
-  val mk_term : t_node -> t
+  val mk_term : 'a t_node -> 'a t
 
   (** Constructor for a free variable with indexes *)
-  val mk_var : var -> t
+  val mk_var : var -> safe t
 
   (** Constructor for a constant *)
-  val mk_const : symbol -> t
+  val mk_const : symbol -> safe t
 
   (** Constructor for a function application *)
-  val mk_app : symbol -> t list -> t
+  val mk_app : symbol -> 'a t list -> 'a t
 
   (** Constructor for a let binding *)
-  val mk_let : (var * t) list -> t -> t
+  val mk_let : (var * 'a t) list -> 'a t -> 'a t
 
   (** Constructor for a let binding *)
-  val mk_let_elim : (var * t) list -> t -> t
+  val mk_let_elim : (var * 'a t) list -> 'a t -> 'a t
 
   (** Constructor for an existential quantification over an indexed
       free variable *)
-  val mk_exists : var list -> t -> t
+  val mk_exists : var list -> 'a t -> 'a t
 
   (** Constructor for a universal quantification over an indexed
       free variable *)
-  val mk_forall : var list -> t -> t
+  val mk_forall : var list -> 'a t -> 'a t
 
   (** Constructor for an annotated term *)
-  val mk_annot : t -> attr -> t
+  val mk_annot : 'a t -> attr -> 'a t
 
   (** Return the node of a hashconsed term *)
-  val node_of_t : t -> t_node
+  val node_of_t : 'a t -> 'a t_node
 
   (** Return the node of a hashconsed lamda abstraction *)
-  val node_of_lambda : lambda -> lambda_node
+  val node_of_lambda : 'a lambda -> 'a lambda_node
 
   (** Return the sorts of a hashconsed lambda abstraction *)
-  val sorts_of_lambda : lambda -> sort list
+  val sorts_of_lambda : 'a lambda -> sort list
 
   (** Return the unique tag of a hashconsed term *)
-  val tag_of_t : t -> int
+  val tag_of_t : 'a t -> int
 
   (** Evaluate the term bottom-up and right-to-left. The evaluation
       function is called at each node of the term with the term being
       evaluated and the list of values computed for the subterms. Let
       bindings are lazily unfolded.  *)
-  val eval_t : (flat -> 'a list -> 'a) -> t -> 'a
+  val eval_t : (flat -> 'a list -> 'a) -> safe t -> 'a
 
   (** Tail-recursive bottom-up right-to-left map on the term
 
@@ -244,47 +247,49 @@ sig
       shifted. Therefore, the function [f] is called with the number of
       let bindings the subterm is under as first argument, so that the
       indexes can be adjusted in the subterm if necessary. *)
-  val map : (int -> t -> t) -> t -> t
+  val map : (int -> unsafe t -> 'a t) -> 'a t -> 'a t
 
+  val map_top : (int -> unsafe t -> 'a t option) -> 'a t -> 'a t
+  
   (** Return the top symbol of a term along with its subterms
 
       If the top symbol of a term is a let binding, the binding is
       distributed over the subterms. *)
-  val destruct : t -> flat
+  val destruct : safe t -> flat
 
-  val instantiate : lambda -> t list -> t
+  val instantiate : 'a lambda -> 'a t list -> 'a t
 
   (** Convert the flattened representation back into a term *)
-  val construct : flat -> t
+  val construct : flat -> safe t
 
   (** Import a term into the hashcons table by rebuilding it bottom
       up *)
-  val import : t -> t
+  val import : 'a t -> 'a t
 
   (** Import a lambda abstraction into the hashcons table by
       rebuilding it bottom up *)
-  val import_lambda : lambda -> lambda
+  val import_lambda : 'a lambda -> 'a lambda
 
   (** Pretty-print a term *)
-  val pp_print_term : ?db:int -> Format.formatter -> t -> unit
+  val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
     
   (** Pretty-print a term *)
-  val pp_print_term : ?db:int -> Format.formatter -> t -> unit
+  val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
     
   val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> lambda -> unit
+    ?db:int -> Format.formatter -> 'a lambda -> unit
 
   val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> t -> unit
+    ?db:int -> Format.formatter -> 'a t -> unit
 
   (** Pretty-print a term *)
-  val print_term : ?db:int -> t -> unit
+  val print_term : ?db:int -> 'a t -> unit
 
   (** Pretty-print a lambda abstraction *)
-  val pp_print_lambda : ?db:int -> Format.formatter -> lambda -> unit
+  val pp_print_lambda : ?db:int -> Format.formatter -> 'a lambda -> unit
     
   (** Pretty-print a lambda abstraction *)
-  val print_lambda : ?db:int -> lambda -> unit
+  val print_lambda : ?db:int -> 'a lambda -> unit
     
   val stats : unit -> int * int * int * int * int * int
   

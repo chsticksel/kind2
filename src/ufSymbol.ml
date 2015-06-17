@@ -61,7 +61,7 @@ type t = (uf_symbol_node, uf_prop) Hashcons.hash_consed
 module Uf_symbol_node = struct 
 
   (* Uninterpreted symbol node *)
-  type t = uf_symbol_node
+  type 'a t = uf_symbol_node
 
   (* Properties of uninterpreted symbol *)
   type prop = uf_prop
