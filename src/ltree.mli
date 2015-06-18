@@ -138,31 +138,35 @@ sig
   (** Lambda abstraction over symbols, variables and sort of the types
       given. Values of the type cannot be constructed outside this
       module in order to maintain invariants about the data type. *)
-  type 'a lambda_node = private L of sort list * 'a t
+  type lambda_node = private L of sort list * t_t
 
   (** Hashconsed lambda abstraction *)
-  and 'a lambda = private ('a lambda_node, unit) Hashcons.hash_consed
+  and lambda_t = private (lambda_node, unit) Hashcons.hash_consed
 
+  and 'a lambda = private lambda_t
+    
   (** Abstract syntax term over symbols, variables and sort of the
       types given. Values of the type cannot be constructed outside
       this module in order to maintain invariants about the data
       type. Use the constructors {!mk_var}, {!mk_const}, {!mk_app},
       {!mk_let}, {!mk_exists} and {!mk_forall}. *)
-  and 'a t_node = private
+  and t_node = private
     | FreeVar of var
     | BoundVar of int
     | Leaf of symbol
-    | Node of symbol * 'a t list
-    | Let of 'a lambda * 'a t list
-    | Exists of 'a lambda
-    | Forall of 'a lambda
-    | Annot of 'a t * attr
+    | Node of symbol * t_t list
+    | Let of lambda_t * t_t list
+    | Exists of lambda_t
+    | Forall of lambda_t
+    | Annot of t_t * attr
 
   (** Properties of a term *)
   and t_prop = private { bound_vars : int list } 
 
   (** Hashconsed abstract syntax term *)
-  and 'a t = private ('a t_node, t_prop) Hashcons.hash_consed
+  and t_t = private (t_node, t_prop) Hashcons.hash_consed
+
+  and 'a t = private t_t 
 
   (** Term over symbols, variables and sort of the types given where
       the topmost symbol is not a binding 
@@ -189,13 +193,13 @@ sig
   val tag : 'a t -> int
 
   (** Constructor for a lambda expression *)
-  val mk_lambda : var list -> 'a t -> 'a lambda
+  val mk_lambda : var list -> safe t -> safe lambda
 
   (** Beta-evaluate a lambda expression *)
-  val eval_lambda : 'a lambda -> 'a t list -> 'a t
+  val eval_lambda : safe lambda -> safe t list -> safe t
 
   (** Constructor for a term *)
-  val mk_term : 'a t_node -> 'a t
+  val mk_term : t_node -> unsafe t
 
   (** Constructor for a free variable with indexes *)
   val mk_var : var -> safe t
@@ -204,30 +208,30 @@ sig
   val mk_const : symbol -> safe t
 
   (** Constructor for a function application *)
-  val mk_app : symbol -> 'a t list -> 'a t
+  val mk_app : symbol -> safe t list -> safe t
 
   (** Constructor for a let binding *)
-  val mk_let : (var * 'a t) list -> 'a t -> 'a t
+  val mk_let : (var * safe t) list -> safe t -> safe t
 
   (** Constructor for a let binding *)
-  val mk_let_elim : (var * 'a t) list -> 'a t -> 'a t
+  val mk_let_elim : (var * safe t) list -> safe t -> safe t
 
   (** Constructor for an existential quantification over an indexed
       free variable *)
-  val mk_exists : var list -> 'a t -> 'a t
+  val mk_exists : var list -> safe t -> safe t
 
   (** Constructor for a universal quantification over an indexed
       free variable *)
-  val mk_forall : var list -> 'a t -> 'a t
+  val mk_forall : var list -> safe t -> safe t
 
   (** Constructor for an annotated term *)
-  val mk_annot : 'a t -> attr -> 'a t
+  val mk_annot : safe t -> attr -> safe t
 
   (** Return the node of a hashconsed term *)
-  val node_of_t : 'a t -> 'a t_node
+  val node_of_t : 'a t -> t_node
 
   (** Return the node of a hashconsed lamda abstraction *)
-  val node_of_lambda : 'a lambda -> 'a lambda_node
+  val node_of_lambda : 'a lambda -> lambda_node
 
   (** Return the sorts of a hashconsed lambda abstraction *)
   val sorts_of_lambda : 'a lambda -> sort list
@@ -249,7 +253,7 @@ sig
       indexes can be adjusted in the subterm if necessary. *)
   val map : (int -> unsafe t -> 'a t) -> 'a t -> 'a t
 
-  val map_top : (int -> unsafe t -> 'a t option) -> 'a t -> 'a t
+  val map_top : (unsafe t -> 'a t option) -> 'a t -> 'a t
   
   (** Return the top symbol of a term along with its subterms
 

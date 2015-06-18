@@ -76,7 +76,7 @@ module TermMap : Map.S with type key = t
 (** {1 Constructors} *)
 
 (** Create a hashconsed term *)
-val mk_term : T.safe T.t_node -> t
+val mk_term : T.t_node -> t
 
 (** Create a hashconsed lambda expression *)
 val mk_lambda : Var.t list -> t -> lambda

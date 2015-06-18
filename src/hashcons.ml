@@ -49,6 +49,8 @@ let gentag =
   let r = ref 0 in
   fun () -> incr r; !r
 
+(*
+
 (* Hashcons table *)
 type ('a, 'b) t = {
 
@@ -324,55 +326,55 @@ let stats t =
 
     (* Size of greatest bucket *)
     lens.(len-1))
-
+*)
+    
 
 (* Functorial interface *)
 
 (* Input signature *)
 module type HashedType =
   sig
-    type 'a t
+    type t
     type prop
-    val equal : 'a t -> 'a t -> bool
-    val hash : 'a t -> int
+    val equal : t -> t -> bool
+    val hash : t -> int
   end
 
 (* Output signature *)
 module type S =
   sig
-    type 'a key
+    type key
     type prop
-    type 'a t
-    exception Key_not_found
-    val create : int -> 'a t
-    val clear : 'a t -> unit
-    val hashcons : 'a t -> 'a key -> prop -> ('a key, prop) hash_consed
-    val find : 'a t -> 'a key -> ('a key, prop) hash_consed
-    val iter : (('a key, prop) hash_consed -> unit) -> 'a t -> unit
-    val fold : (('a key, prop) hash_consed -> 'b -> 'b) -> 'a t -> 'b -> 'b
-    val stats : 'a t -> int * int * int * int * int * int
+    type t
+    val create : int -> t
+    val clear : t -> unit
+    val hashcons : t -> key -> prop -> (key, prop) hash_consed
+    val find : t -> key -> (key, prop) hash_consed
+    val iter : ((key, prop) hash_consed -> unit) -> t -> unit
+    val fold : ((key, prop) hash_consed -> 'a -> 'a) -> t -> 'a -> 'a
+    val stats : t -> int * int * int * int * int * int
   end
 
 (* Functor *)
-module Make(H : HashedType) : (S with type 'a key = 'a H.t and type prop = H.prop) = 
+module Make(H : HashedType) : (S with type key = H.t and type prop = H.prop) = 
 struct
 
   (* Type of key *)
-  type 'a key = 'a H.t
+  type key = H.t
 
   (* Type of property *)
   type prop = H.prop
 
   (* Hashconsed key *)
-  type 'a data = ('a H.t, H.prop) hash_consed
+  type data = (H.t, H.prop) hash_consed
 
       
   (* Hashcons table *)
-  type 'a t = {
+  type t = {
 
     (* Array of buckets: each bucket is an array of values and an
        integer giving the next free position in the bucket array. *)
-    mutable table : (int * ('a data array)) array;
+    mutable table : (int * (data array)) array;
     
     (* sum of the bucket sizes *)
     mutable totsize : int;             

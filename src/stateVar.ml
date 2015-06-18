@@ -73,7 +73,7 @@ type t = (state_var, state_var_prop) Hashcons.hash_consed
 module State_var_node = struct 
 
   (* State variable node *)
-  type 'a t = state_var_node
+  type t = state_var_node
 
   (* Properties of state variable *)
   type prop = state_var_prop
@@ -284,7 +284,7 @@ let mk_state_var
               (state_var_name, state_var_scope)))
 
   (* State variable is not in the hashcons table *)
-  with Not_found | Hstate_var.Key_not_found _ -> 
+  with Not_found -> 
     
     try 
       

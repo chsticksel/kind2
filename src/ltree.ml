@@ -81,22 +81,26 @@ sig
 
   type unsafe
 
-  type 'a lambda_node = private L of sort list * 'a t
+  type lambda_node = private L of sort list * t_t
 
-  and 'a lambda = private ('a lambda_node, unit) H.hash_consed
+  and lambda_t = private (lambda_node, unit) H.hash_consed
 
-  and 'a t_node = private
+  and 'a lambda = private lambda_t
+
+  and t_node = private
     | FreeVar of var
     | BoundVar of int
     | Leaf of symbol
-    | Node of symbol * 'a t list
-    | Let of 'a lambda * 'a t list
-    | Exists of 'a lambda
-    | Forall of 'a lambda
-    | Annot of 'a t * attr
+    | Node of symbol * t_t list
+    | Let of lambda_t * t_t list
+    | Exists of lambda_t
+    | Forall of lambda_t
+    | Annot of t_t * attr
 
-  and 'a t = private ('a t_node, t_prop) H.hash_consed
+  and t_t = private (t_node, t_prop) H.hash_consed
 
+  and 'a t = private t_t
+      
   and t_prop = private { bound_vars : int list } 
 
   and flat = private
@@ -113,31 +117,31 @@ sig
 
   val tag : 'a t -> int
 
-  val mk_lambda : var list -> 'a t -> 'a lambda
+  val mk_lambda : var list -> safe t -> safe lambda
 
-  val eval_lambda : 'a lambda -> 'a t list -> 'a t
+  val eval_lambda : safe lambda -> safe t list -> safe t
 
-  val mk_term : 'a t_node -> 'a t
+  val mk_term : t_node -> unsafe t
 
-  val mk_var : var -> 'a t
+  val mk_var : var -> safe t
   
-  val mk_const : symbol -> 'a t
+  val mk_const : symbol -> safe t
 
-  val mk_app : symbol -> 'a t list -> 'a t
+  val mk_app : symbol -> safe t list -> safe t
 
-  val mk_let : (var * 'a t) list -> 'a t -> 'a t
+  val mk_let : (var * safe t) list -> safe t -> safe t
 
-  val mk_let_elim : (var * 'a t) list -> 'a t -> 'a t
+  val mk_let_elim : (var * safe t) list -> safe t -> safe t
 
-  val mk_exists : var list -> 'a t -> 'a t
+  val mk_exists : var list -> safe t -> safe t
 
-  val mk_forall : var list -> 'a t -> 'a t
+  val mk_forall : var list -> safe t -> safe t
 
-  val mk_annot : 'a t -> attr -> 'a t
+  val mk_annot : safe t -> attr -> safe t
 
-  val node_of_t : 'a t -> 'a t_node
+  val node_of_t : 'a t -> t_node
 
-  val node_of_lambda : 'a lambda -> 'a lambda_node
+  val node_of_lambda : 'a lambda -> lambda_node
 
   val sorts_of_lambda : 'a lambda -> sort list
 
@@ -149,7 +153,7 @@ sig
 
   val map : (int -> unsafe t -> 'a t) -> 'a t -> 'a t
 
-  val map_top : (int -> unsafe t -> 'a t option) -> 'a t -> 'a t
+  val map_top : (unsafe t -> 'a t option) -> 'a t -> 'a t
 
   val destruct : safe t -> flat
 
@@ -157,7 +161,7 @@ sig
 
   val construct : flat -> safe t
 
-  val safe_of_unsafe : 'a t -> safe t
+  (* val safe_of_unsafe : 'a t -> safe t *)
 
   val import : 'a t -> 'a t
 
@@ -188,7 +192,7 @@ module Make(T : BaseTypes) :
       and type var = T.var 
       and type sort = T.sort
       and type attr = T.attr) =
-struct
+struct 
 
   (* ********************************************************************* *)
   (* Type definitions                                                      *)
@@ -217,13 +221,15 @@ struct
 
      We need the variant L to do pattern matching because the type is
      private. *)
-  type 'a lambda_node = L of sort list * 'a t
+  type lambda_node = L of sort list * t_t
 
   (* Hashconsed typed lambda abstraction *)
-  and 'a lambda = ('a lambda_node, unit) H.hash_consed
+  and lambda_t = (lambda_node, unit) H.hash_consed
 
+  and 'a lambda = lambda_t
+      
   (* Abstract syntax term with let bindings and quantifiers *)
-  and 'a t_node = 
+  and t_node = 
 
     (* Free variable *)
     | FreeVar of var
@@ -235,26 +241,28 @@ struct
     | Leaf of symbol
 
     (* Function application, the list must not be empty *)
-    | Node of symbol * 'a t list
+    | Node of symbol * t_t list
 
     (* Let binding *)
-    | Let of 'a lambda * 'a t list
+    | Let of lambda_t * t_t list
 
     (* Existential quantification *)
-    | Exists of 'a lambda
+    | Exists of lambda_t
 
     (* Universal quantification *)
-    | Forall of 'a lambda
+    | Forall of lambda_t
 
     (* Annotated term *)
-    | Annot of 'a t * attr
+    | Annot of t_t * attr
 
   (* Property of a term node *)
   and t_prop = { bound_vars : int list } 
 
   (* Hashconsed abstract syntax term *)
-  and 'a t = ('a t_node, t_prop) H.hash_consed
+  and t_t = (t_node, t_prop) H.hash_consed
 
+  and 'a t = t_t 
+    
   (* Flattened term without binders at the top symbol *)
   type flat = 
     | Var of var
@@ -273,7 +281,7 @@ struct
   struct 
 
     (* Type of the hashconsed node *)
-    type 'a t = 'a lambda_node 
+    type t = lambda_node 
 
     (* Type of the node property *)
     type prop = unit
@@ -305,7 +313,7 @@ struct
   struct 
 
     (* Type of the hashconsed node *)
-    type 'a t = 'a t_node
+    type t = t_node
 
     (* Type of the node property *)
     type prop = t_prop
@@ -534,7 +542,7 @@ struct
     Ht.hashcons ht n (prop_of_term_node n)
 
   (* Unsafe constructor for node *)
-  let ht_node s l : unsafe t = 
+  let ht_node s l = 
     let n = Node (s, l) in
     Ht.hashcons ht n (prop_of_term_node n)
 
@@ -557,21 +565,22 @@ struct
   let ht_annot t a = 
     let n = Annot (t, a) in
     Ht.hashcons ht n (prop_of_term_node n)
+(*
+  let safe_of_unsafe x = 
 
+    map
 
-  (* TODO: check indexes of bound variables first *)
-  let safe_of_unsafe (x : unsafe t) : safe t = x
+      (fun i -> function 
+      
+        (* Fail if index of bound variable greater than number of
+           lambda bindings *)
+        | { H.node = BoundVar j } as t -> assert (i >= j); t
+            
+        (* Keep term otherwise *)
+        | t -> t)
 
-  (* Convert the flattened representation back into a higher-oder
-      abstract syntax term
-
-     Use unsafe constructors here, because this function is used by
-     fold. *)
-  let construct = function 
-    | Var v -> ht_free_var v |> safe_of_unsafe
-    | Const c -> ht_leaf c |> safe_of_unsafe
-    | App (s, l) -> ht_node s l |> safe_of_unsafe
-    | Attr (t, a) -> ht_annot t a |> safe_of_unsafe
+      t
+*)
 
   (* ********************************************************************* *)
   (* Pretty-printing                                                       *)
@@ -845,7 +854,7 @@ struct
     in
 
     (* Recursive map *)
-    let rec map (f : int -> unsafe t -> 'a t) accum = function 
+    let rec map (f : int -> unsafe t -> unsafe t) accum = function 
 
       (* The stack is empty, we are done. The accumulator contains
          exactly one element, which is a singleton list of the result *)
@@ -957,7 +966,7 @@ struct
     (* Call recursive function with initial parameters *)
     map f [[]] [(0, MTree term)]
 
-
+      
   (* ********************************************************************* *)
   (* Folding function                                                      *)
   (* ********************************************************************* *)
@@ -993,7 +1002,20 @@ struct
     | FCtx of int
 
 
-(* Folding function for bottom-up right-to-left evaluation of a term;
+
+  (* Convert the flattened representation back into an abstract syntax
+     term
+
+     Use unsafe constructors here, because this function is used by
+     fold. *)
+  let construct = function 
+    | Var v -> ht_free_var v
+    | Const c -> ht_leaf c
+    | App (s, l) -> ht_node s l
+    | Attr (t, a) -> ht_annot t a
+
+
+  (* Folding function for bottom-up right-to-left evaluation of a term;
    substitutions for variables are evaluated lazily and evaluated
    only once
 
@@ -1258,13 +1280,13 @@ struct
 
 
 
-  let rec map_top i f = 
+  let rec map_top f = 
 
     (* Fail if bound variable index points outside term *)
-    let check_t i t = 
+    let check_t t = 
 
       map
-        (fun _ -> function 
+        (fun i -> function 
 
            (* Fail if index of bound variable greater than number of
               lambda bindings *)
@@ -1290,7 +1312,7 @@ struct
           | None -> t
 
           (* Check substitution and return *)
-          | Some t' -> check_t i t')
+          | Some t' -> check_t t')
         
       (* Skip bound variable *)
       | { H.node = BoundVar _ } as t -> t
@@ -1302,10 +1324,10 @@ struct
         (match f t with
 
           (* Recurse to subterms if no change  *)
-          | None -> ht_node s (List.map (map_top i f) l)
+          | None -> ht_node s (List.map (map_top f) l)
 
           (* Check substitution and return if changed *)
-          | Some t' -> check_t i t')
+          | Some t' -> check_t t')
         
 
 
@@ -1400,7 +1422,7 @@ struct
      sub-term is under in its first argument. To bind a free variable
      we look up its relative position in the simultaneous binding, and
      increment it. *)
-  let bind dbm (term : 'a t) : 'a t = 
+  let bind dbm term = 
 
     map
 
@@ -1431,14 +1453,14 @@ struct
   (* ********************************************************************* *)
 
   (* Constructor for a lambda expression *)
-  let mk_lambda x (t : 'a t) : 'a lambda =
+  let mk_lambda x t =
 
     (* Associate each variable with its relative index in the
        binding *)
     let dbm = List.mapi (fun i v -> (v, i)) (List.rev x) in
 
     (* Bind free variables in term in a new lambda *)
-    hl_lambda
+    hl_lambda 
       (List.map T.sort_of_var x) 
       (bind dbm t)
 

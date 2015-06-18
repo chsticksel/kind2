@@ -41,6 +41,8 @@ val compare : ('a, 'b) hash_consed -> ('a, 'b) hash_consed -> int
 val equal : ('a, 'b) hash_consed -> ('a, 'b) hash_consed -> bool
 val hash : ('a, 'b) hash_consed -> int
 
+(*
+
 (** {1 Generic part, using ocaml generic equality and hash function} *)
 
 type ('a, 'b) t
@@ -71,32 +73,33 @@ val stats : ('a, 'b) t -> int * int * int * int * int * int
     table length, number of entries, sum of bucket lengths,
     smallest bucket length, median bucket length, biggest bucket length. *)
 
+*)
+  
 (** {1 Functorial interface} *) 
 
 module type HashedType =
   sig
-    type 'a t
+    type t
     type prop
-    val equal : 'a t -> 'a t -> bool
-    val hash : 'a t -> int
+    val equal : t -> t -> bool
+    val hash : t -> int
   end
 
 module type S =
   sig
-    type 'a key
+    type key
     type prop
-    type 'a t
-    exception Key_not_found
-    val create : int -> 'a t
-    val clear : 'a t -> unit
-    val hashcons : 'a t -> 'a key -> prop -> ('a key, prop) hash_consed
-    val find : 'a t -> 'a key -> ('a key, prop) hash_consed
-    val iter : (('a key, prop) hash_consed -> unit) -> 'a t -> unit
-    val fold : (('a key, prop) hash_consed -> 'b -> 'b) -> 'a t -> 'b -> 'b
-    val stats : 'a t -> int * int * int * int * int * int
+    type t
+    val create : int -> t
+    val clear : t -> unit
+    val hashcons : t -> key -> prop -> (key, prop) hash_consed
+    val find : t -> key -> (key, prop) hash_consed
+    val iter : ((key, prop) hash_consed -> unit) -> t -> unit
+    val fold : ((key, prop) hash_consed -> 'a -> 'a) -> t -> 'a -> 'a
+    val stats : t -> int * int * int * int * int * int
   end
 
-module Make(H : HashedType) : (S with type 'a key = 'a H.t and type prop = H.prop)
+module Make(H : HashedType) : (S with type key = H.t and type prop = H.prop)
 
 (* 
    Local Variables:

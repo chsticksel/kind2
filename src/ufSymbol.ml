@@ -61,7 +61,7 @@ type t = (uf_symbol_node, uf_prop) Hashcons.hash_consed
 module Uf_symbol_node = struct 
 
   (* Uninterpreted symbol node *)
-  type 'a t = uf_symbol_node
+  type t = uf_symbol_node
 
   (* Properties of uninterpreted symbol *)
   type prop = uf_prop
@@ -206,7 +206,7 @@ let mk_uf_symbol s a r =
            "Uninterpreted symbol redeclared with different signature")
         
   (* Uninterpreted symbol is not in the hashcons table *)
-  with Not_found | Huf_symbol.Key_not_found _ -> 
+  with Not_found -> 
     
     (* Hashcons uninterpreted symbol *)
     Huf_symbol.hashcons 
@@ -250,7 +250,7 @@ let rec next_fresh_uf_symbol () =
     next_fresh_uf_symbol ()
 
   (* Candidiate symbol is not declared and can be used *)
-  with Not_found | Huf_symbol.Key_not_found _ -> s
+  with Not_found -> s
     
     
 (* Return a fresh uninterpreted symbol 

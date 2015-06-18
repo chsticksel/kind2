@@ -101,10 +101,10 @@ end
 module T = Ltree.Make (BaseTypes)
 
 (* Hashconsed term over symbols, variables and sorts *)
-type t = T.t
+type t = T.safe T.t
 
 (* Hashconsed lambda expression *)
-type lambda = T.lambda
+type lambda = T.safe T.lambda
 
 let stats = T.stats
 
