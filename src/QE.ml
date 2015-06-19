@@ -441,11 +441,11 @@ let rec collect_eqs vars (eqs, terms) = function
     (* Term is an equation with a variable in [vars] on left-hand side *)
     | Term.T.App (s, [v; e]) when
         (Symbol.equal_symbols s Symbol.s_eq)
-        && (Term.is_free_var v)
-        && (List.exists (Var.equal_vars (Term.free_var_of_term v)) vars) -> 
+        && (Term.T.is_free_var v)
+        && (List.exists (Var.equal_vars (Term.T.free_var_of_t v)) vars) -> 
 
       (* Variable on left- or right-hand side *)
-      let v = Term.free_var_of_term v in
+      let v = Term.T.free_var_of_t v in
 
       (try 
 

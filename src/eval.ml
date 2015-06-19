@@ -114,12 +114,12 @@ let rec value_of_term term = match Term.destruct term with
     ) 
 
   (* Term is a negative constant symbol *)
-  | Term.T.App (s, [c]) when s == Symbol.s_minus && Term.is_leaf c -> 
+  | Term.T.App (s, [c]) when s == Symbol.s_minus && Term.T.is_leaf c -> 
 
     (
 
       (* Get symbol of constant *)
-      match Symbol.node_of_symbol (Term.leaf_of_term c) with 
+      match Symbol.node_of_symbol (Term.T.leaf_of_t c) with 
         
         (* Term is an integer numeral *)
         | `NUMERAL n -> ValNum (Numeral.neg n)

@@ -224,10 +224,10 @@ let lift_term pos node term =
     (function _ -> function 
 
        (* Need to instantiate free variables *)
-       | term when Term.is_free_var term -> 
+       | term when Term.T.is_free_var term -> 
          
          (* Get variable of term, this will not fail *)
-         let var = Term.free_var_of_term term in
+         let var = Term.T.free_var_of_t term in
          
          (* Only if variable is an instance of a state variable *)
          if Var.is_state_var_instance var then 
@@ -249,10 +249,10 @@ let lift_term pos node term =
            
            (* No change if free variable is not an instance of a state
               variable *)
-           term
+           term |> Term.T.safe_of_unsafe
              
        (* No change term that are not free variables *)
-       | term -> term)
+       | term -> Term.T.safe_of_unsafe term)
 
     term
 
@@ -2060,8 +2060,8 @@ let mk_pre
     | t when 
         t == Term.t_true || 
         t == Term.t_false || 
-        (Term.is_free_var t && 
-         Term.free_var_of_term t |> Var.is_const_state_var) ||
+        (Term.T.is_free_var t && 
+         Term.T.free_var_of_t t |> Var.is_const_state_var) ||
         (match Term.destruct t with 
           | Term.T.Const c1 when 
               Symbol.is_numeral c1 || Symbol.is_decimal c1 -> true
@@ -2069,8 +2069,8 @@ let mk_pre
 
     (* Expression is a variable at the current instant *)
     | t when 
-        Term.is_free_var t && 
-        Numeral.(Var.offset_of_state_var_instance (Term.free_var_of_term t) = 
+        Term.T.is_free_var t && 
+        Numeral.(Var.offset_of_state_var_instance (Term.T.free_var_of_t t) = 
                  base_offset)  -> 
       
       (Term.bump_state Numeral.(- one) t, new_vars)
@@ -2101,8 +2101,8 @@ let mk_pre
 
     (* Expression is a variable at the current instant *)
     | t when 
-        Term.is_free_var t && 
-        Numeral.(Var.offset_of_state_var_instance (Term.free_var_of_term t) = 
+        Term.T.is_free_var t && 
+        Numeral.(Var.offset_of_state_var_instance (Term.T.free_var_of_t t) = 
                  cur_offset)-> 
 
       (Term.bump_state Numeral.(- one) t, new_vars')
@@ -2153,10 +2153,10 @@ let pre_is_unguarded { expr_init } =
 let is_var_at_offset { expr_init; expr_step } (init_offset, step_offset) = 
 
   (* Term must be a free variable *)
-  (Term.is_free_var expr_init) && 
+  (Term.T.is_free_var expr_init) && 
 
   (* Get free variable of term *)
-  (let var_init = Term.free_var_of_term expr_init in 
+  (let var_init = Term.T.free_var_of_t expr_init in 
 
    (* Variable must be an instance of a state variable *)
    Var.is_state_var_instance var_init && 
@@ -2165,10 +2165,10 @@ let is_var_at_offset { expr_init; expr_step } (init_offset, step_offset) =
    Numeral.(Var.offset_of_state_var_instance var_init = init_offset)) &&
 
   (* Term must be a free variable *)
-  (Term.is_free_var expr_step) && 
+  (Term.T.is_free_var expr_step) && 
 
   (* Get free variable of term *)
-  (let var_step = Term.free_var_of_term expr_step in 
+  (let var_step = Term.T.free_var_of_t expr_step in 
 
    (* Variable must be an instance of a state variable *)
    Var.is_state_var_instance var_step && 
@@ -2211,7 +2211,7 @@ let state_var_of_expr ({ expr_init; expr_step } as expr) =
     try 
       
       (* Get free variable of term *)
-      let var = Term.free_var_of_term expr_init in 
+      let var = Term.T.free_var_of_t expr_init in 
       
       (* Get instance of state variable *)
       Var.state_var_of_state_var_instance var

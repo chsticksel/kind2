@@ -34,13 +34,13 @@ module Pruning = struct
     (* Returns true if [negated] is an or containing the complement
        of [lhs]. Used if [rhs] is a not. *)
     let negated_and negated =
-      if Term.is_node negated
+      if Term.T.is_node negated
       then
       
-        if Term.node_symbol_of_term negated == Symbol.s_and
+        if Term.T.node_symbol_of_t negated == Symbol.s_and
         then
           (* Term is an and. *)
-          Term.node_args_of_term negated
+          Term.T.node_args_of_t negated
           |> List.mem (Term.negate lhs)
 
         else false
@@ -48,19 +48,19 @@ module Pruning = struct
     in
   
     (* Is rhs an application? *)
-    if Term.is_node rhs
+    if Term.T.is_node rhs
     then
 
-      ( if Term.node_symbol_of_term rhs == Symbol.s_or
+      ( if Term.T.node_symbol_of_t rhs == Symbol.s_or
         then
           (* Rhs is an or. *)
-          Term.node_args_of_term rhs |> List.mem lhs
+          Term.T.node_args_of_t rhs |> List.mem lhs
 
-        else if Term.node_symbol_of_term rhs == Symbol.s_not
+        else if Term.T.node_symbol_of_t rhs == Symbol.s_not
         then
           (* Rhs is a not, need to check if there is an and
              below. *)
-          ( match Term.node_args_of_term rhs with
+          ( match Term.T.node_args_of_t rhs with
 
             (* Well founded not. *)
             | [ negated ] -> negated_and negated
@@ -79,13 +79,13 @@ module Pruning = struct
     (* Returns true if [negated] is an and containing the complement
        of [rhs]. Used if [lhs] is a not. *)
     let negated_or negated =
-      if Term.is_node negated
+      if Term.T.is_node negated
       then
 
-        if Term.node_symbol_of_term negated == Symbol.s_or
+        if Term.T.node_symbol_of_t negated == Symbol.s_or
         then
           (* Term is an or. *)
-          Term.node_args_of_term negated
+          Term.T.node_args_of_t negated
           |> List.mem (Term.negate rhs)
 
         else false
@@ -93,19 +93,19 @@ module Pruning = struct
     in
 
     (* Is rhs an application? *)
-    if Term.is_node lhs
+    if Term.T.is_node lhs
     then
 
-      ( if Term.node_symbol_of_term lhs == Symbol.s_and
+      ( if Term.T.node_symbol_of_t lhs == Symbol.s_and
         then
           (* Lhs is an and. *)
-          Term.node_args_of_term lhs |> List.mem rhs
+          Term.T.node_args_of_t lhs |> List.mem rhs
 
 
-        else if Term.node_symbol_of_term lhs == Symbol.s_not
+        else if Term.T.node_symbol_of_t lhs == Symbol.s_not
         then
           (* Lhs is a not, need to check if there is an or below. *)
-          ( match Term.node_args_of_term lhs with
+          ( match Term.T.node_args_of_t lhs with
 
             (* Well founded not. *)
             | [ negated ] -> negated_or negated
@@ -147,18 +147,18 @@ module Pruning = struct
     in
 
     (* Are lhs and rhs applications? *)
-    if (Term.is_node lhs) && (Term.is_node rhs)
+    if (Term.T.is_node lhs) && (Term.T.is_node rhs)
     then
 
       (* Are rhs and lhs similar applications? *)
       if
-        (Term.node_symbol_of_term lhs)
-        == (Term.node_symbol_of_term rhs)
+        (Term.T.node_symbol_of_t lhs)
+        == (Term.T.node_symbol_of_t rhs)
       then (
 
         match
-          (Term.node_args_of_term lhs),
-          (Term.node_args_of_term rhs)
+          (Term.T.node_args_of_t lhs),
+          (Term.T.node_args_of_t rhs)
         with
 
           | [kid1 ; kid2], [kid1' ; kid2'] ->
@@ -170,25 +170,25 @@ module Pruning = struct
                kid1]. Otherwise return false. *)
             let compare symbol operator =
 
-              if (Term.node_symbol_of_term lhs) == symbol
+              if (Term.T.node_symbol_of_t lhs) == symbol
               then
 
                 ( if
-                    (Term.is_free_var kid1)
-                    && (Term.is_free_var kid1')
+                    (Term.T.is_free_var kid1)
+                    && (Term.T.is_free_var kid1')
                   then
 
-                    ( (Term.free_var_of_term kid1) ==
-                        (Term.free_var_of_term kid1') )
+                    ( (Term.T.free_var_of_t kid1) ==
+                        (Term.T.free_var_of_t kid1') )
                     && ( operator kid2 kid2' )
 
                   else if
-                      (Term.is_free_var kid2)
-                      && (Term.is_free_var kid2')
+                      (Term.T.is_free_var kid2)
+                      && (Term.T.is_free_var kid2')
                   then
 
-                    ( (Term.free_var_of_term kid2)
-                      == (Term.free_var_of_term kid2') )
+                    ( (Term.T.free_var_of_t kid2)
+                      == (Term.T.free_var_of_t kid2') )
                     && ( operator kid1' kid1 )
 
                   else false )
@@ -235,9 +235,9 @@ module Pruning = struct
  
   
   let structural_criterion term =
-    if Term.node_symbol_of_term term == Symbol.s_implies then
+    if Term.T.node_symbol_of_t term == Symbol.s_implies then
         (* Term is indeed an implication. *)
-        ( match Term.node_args_of_term term with
+        ( match Term.T.node_args_of_t term with
 
           (* Term is a well founded implication. *)
           | [ lhs ; rhs ] ->

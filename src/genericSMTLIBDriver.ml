@@ -602,7 +602,7 @@ let pp_print_expr = pp_print_term
 
 
 (* Pretty-print an expression to the standard formatter *)
-let print_expr = pp_print_expr Format.std_formatter
+let print_expr e = pp_print_expr Format.std_formatter e
 
 
 (* Return a string representation of an expression *)

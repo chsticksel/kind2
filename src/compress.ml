@@ -339,10 +339,10 @@ let rec instantiate_trans_succ var_uf_map i term =
     (fun _ t -> 
 
        (* Subterm is a variable? *)
-       if Term.is_free_var t then 
+       if Term.T.is_free_var t then 
 
          (* Get variable of term *)
-         (let v = Term.free_var_of_term t in
+         (let v = Term.T.free_var_of_t t in
 
           if 
 
@@ -398,7 +398,7 @@ let rec instantiate_trans_succ var_uf_map i term =
 
           else
 
-            t
+            t |> Term.T.safe_of_unsafe
 
          )
 
@@ -406,7 +406,7 @@ let rec instantiate_trans_succ var_uf_map i term =
          
          (* Subterm is not a variable or an uninterpreted predicate to
             substitute *)
-         t)
+         t |> Term.T.safe_of_unsafe)
 
     term
 
@@ -526,10 +526,10 @@ let rec instantiate_trans_pred var_uf_map i term =
     (fun _ t -> 
 
        (* Subterm is a variable? *)
-       if Term.is_free_var t then 
+       if Term.T.is_free_var t then 
 
          (* Get variable of term *)
-         (let v = Term.free_var_of_term t in
+         (let v = Term.T.free_var_of_t t in
 
           if 
 
@@ -585,7 +585,7 @@ let rec instantiate_trans_pred var_uf_map i term =
 
           else
 
-            t
+            t |> Term.T.safe_of_unsafe
 
          )
 
@@ -593,7 +593,7 @@ let rec instantiate_trans_pred var_uf_map i term =
          
          (* Subterm is not a variable or an uninterpreted predicate to
             substitute *)
-         t)
+         t |> Term.T.safe_of_unsafe)
 
     term
 

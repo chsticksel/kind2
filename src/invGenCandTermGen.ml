@@ -164,7 +164,7 @@ module CandidateTermGen = struct
   module FlatTermsRules : sig
 
     (* Applies the state var rules. *)
-    val apply: Term.T.flat -> TSet.t -> TSet.t
+    val apply: Term.T.safe Term.T.flat -> TSet.t -> TSet.t
 
   end = struct
 

@@ -354,8 +354,8 @@ let model_of_smt_values conv_left type_left s smt_values =
       let v', e' = 
         let t = S.Conv.var_term_of_smtexpr v in
         (* TODO: deal with arrays *)
-        assert (Term.is_free_var t);
-        Term.free_var_of_term t, S.Conv.term_of_smtexpr e 
+        assert (Term.T.is_free_var t);
+        Term.T.free_var_of_t t, S.Conv.term_of_smtexpr e 
       in
 
       (* Get types of variable and term *)
@@ -499,8 +499,8 @@ let get_var_values s vars =
            let t = S.Conv.var_term_of_smtexpr v in
 
            (* We are sure that there are no array typed variables *)
-           assert (Term.is_free_var t); 
-           (Term.free_var_of_term t))
+           assert (Term.T.is_free_var t); 
+           (Term.T.free_var_of_t t))
 
         Var.type_of_var 
         s 

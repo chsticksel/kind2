@@ -116,95 +116,75 @@ let node_of_term = T.node_of_t
 let destruct = T.destruct
 
 
-(* Return true if the term is a free variable *)
-let is_free_var t = match node_of_term t with
-  | T.FreeVar _ -> true 
-  | _ -> false 
-
-
-(* Return the variable of a free variable term *)
-let free_var_of_term t = match node_of_term t with
-  | T.FreeVar v -> v
-  | _ -> invalid_arg "free_var_of_term"
-
-
-(* Return true if the term is a bound variable *)
-let is_bound_var t = match node_of_term t with
-  | T.BoundVar _ -> true 
-  | _ -> false 
-
-
-(* Return true if the term is a leaf symbol *)
-let is_leaf t = match node_of_term t with
-  | T.Leaf _ -> true 
-  | _ -> false 
-
-
-(* Return the symbol of a leaf term *)
-let leaf_of_term t = match node_of_term t with
-  | T.Leaf s -> s
-  | _ -> invalid_arg "leaf_of_term"
-
-
-(* Return true if the term is a function application *)
-let is_node t = match node_of_term t with
-  | T.Node _ -> true 
-  | _ -> false 
-
-
-(* Return the symbol of a function application *)
-let node_symbol_of_term t = match node_of_term t with
-  | T.Node (s, _) -> s 
-  | _ -> invalid_arg "node_symbol_of_term"
-
-
-(* Return the arguments of a function application *)
-let node_args_of_term t = match node_of_term t with
-  | T.Node (_, l) -> l 
-  | _ -> invalid_arg "node_args_of_term"
-
-
-(* Return true if the term is a let binding *)
-let is_let t = match node_of_term t with
-  | T.Let _ -> true 
-  | _ -> false 
-
-
-(* Return true if the term is an existential quantifier *)
-let is_exists t = match node_of_term t with
-  | T.Exists _ -> true 
-  | _ -> false 
-
-
-(* Return true if the term is a universal quantifier *)
-let is_forall t = match node_of_term t with
-  | T.Forall _ -> true 
-  | _ -> false 
-
-
 (* Return true if the term is a named term *)
-let is_named t =  match node_of_term t with
-  | T.Annot (_, a) when TermAttr.is_named a -> true
-  | _ -> false
+let is_named t =  
+
+  (* Term is annotated? *)
+  if T.is_annot t then
+
+    (* Return true if annotation is a name *)
+    T.annot_of_t t |> TermAttr.is_named 
+
+  else
+
+    (* Term is not annotated, thus not named *)
+    false
 
 
 (* Return the term of a named term *)
-let term_of_named t =  match node_of_term t with
-  | T.Annot (t, a) when TermAttr.is_named a -> t
-  | _ -> invalid_arg "term_of_named"
+let term_of_named t =
+
+  (* Term is annotated? *)
+  if T.is_annot t then
+
+    (* Get annotation of term *)
+    let a = T.annot_of_t t in
+    
+    (* Annotation is a name? *)
+    if TermAttr.is_named a then
+      
+      (* Return term in annotation *)
+      T.annot_t_of_t t
+
+    else
+      
+      (* Annotation is not a name *)
+      invalid_arg "term_of_named"
+
+  else
+
+    (* Term is not annotated *)
+    invalid_arg "term_of_named"
 
 
 (* Return the name of a named term *)
-let name_of_named t =  match node_of_term t with
-  | T.Annot (t, a) when TermAttr.is_named a ->
+let name_of_named t =
 
-    (* Get name of term *)
-    let (s, n) = TermAttr.named_of_attr a in
+  (* Term is annotated? *)
+  if T.is_annot t then
 
-    (* Fail if not in term namespace, otherwise return integer *)
-    if s <> "t" then invalid_arg "term_of_named" else n
+    (* Get annotation of term *)
+    let a = T.annot_of_t t in
+    
+    (* Annotation is a name? *)
+    if TermAttr.is_named a then
       
-  | _ -> invalid_arg "term_of_named"
+      (* Get name from annotation *)
+      let (s, n) = TermAttr.named_of_attr a in
+
+      (* Fail if not in term namespace, otherwise return integer *)
+      if s <> "t" then invalid_arg "term_of_named" else n
+
+    else
+      
+      (* Annotation is not a name *)
+      invalid_arg "term_of_named"
+
+  else
+
+    (* Term is not annotated *)
+    invalid_arg "term_of_named"
+
 
 
 (* Return true if the term is an integer constant *)
@@ -246,19 +226,17 @@ let rec numeral_of_term t = match destruct t with
 
 
 (* Return decimal constant of a term *)
-let rec decimal_of_term t = 
-
-  match node_of_term t with 
+let rec decimal_of_term t = match destruct t with 
 
   (* Term is a decimal constant *)
-  | T.Leaf s when Symbol.is_decimal s -> Symbol.decimal_of_symbol s
+  | T.Const s when Symbol.is_decimal s -> Symbol.decimal_of_symbol s
 
   (* Term is a negated decimal constant *)
-  | T.Node (s, [a]) when s == Symbol.s_minus && is_decimal a -> 
+  | T.App (s, [a]) when s == Symbol.s_minus && is_decimal a -> 
     Decimal.(~- (decimal_of_term a))
 
   (* Term is an integer division *)
-  | T.Node (s, [n; d]) when 
+  | T.App (s, [n; d]) when 
       s == Symbol.s_div && is_numeral n && is_numeral d ->
 
     let n' = 
@@ -279,16 +257,16 @@ let rec decimal_of_term t =
 
 
 (* Return true if the term is a decimal constant *)
-and is_decimal t = match node_of_term t with 
+and is_decimal t = match destruct t with 
 
   (* Term is a decimal constant *)
-  | T.Leaf s when Symbol.is_decimal s -> true
+  | T.Const s when Symbol.is_decimal s -> true
 
   (* Term is a negated decimal constant *)
-  | T.Node (s, [a]) when s == Symbol.s_minus && is_decimal a -> true
+  | T.App (s, [a]) when s == Symbol.s_minus && is_decimal a -> true
 
   (* Term is an integer division *)
-  | T.Node (s, [n; d]) when 
+  | T.App (s, [n; d]) when 
       s == Symbol.s_div && 
       (is_numeral n || is_decimal n && Decimal.is_int (decimal_of_term n)) && 
       (is_numeral d || is_decimal d && Decimal.is_int (decimal_of_term d)) ->
@@ -299,25 +277,25 @@ and is_decimal t = match node_of_term t with
 
 
 (* Return true if the term is a Boolean constant *)
-let rec is_bool t = match node_of_term t with 
+let rec is_bool t = match destruct t with 
 
   (* Term is a Boolean constant *)
-  | T.Leaf s when Symbol.is_bool s -> true
+  | T.Const s when Symbol.is_bool s -> true
 
   (* Term is a negated Boolean constant *)
-  | T.Node (s, [a]) when s == Symbol.s_not && is_bool a -> true
+  | T.App (s, [a]) when s == Symbol.s_not && is_bool a -> true
 
   | _ -> false
 
 
 (* Return Boolean constant of a term *)
-let rec bool_of_term t = match node_of_term t with 
+let rec bool_of_term t = match destruct t with 
 
   (* Term is a Boolean constant *)
-  | T.Leaf s when Symbol.is_bool s -> Symbol.bool_of_symbol s
+  | T.Const s when Symbol.is_bool s -> Symbol.bool_of_symbol s
 
   (* Term is a negated numeral constant *)
-  | T.Node (s, [a]) when s == Symbol.s_not && is_bool a -> 
+  | T.App (s, [a]) when s == Symbol.s_not && is_bool a -> 
     not (bool_of_term a)
 
   | _ -> invalid_arg "bool_of_term"
@@ -337,15 +315,15 @@ let is_select t = match node_of_term t with
    The array argument of a select is either another select operation
    or a variable. For the expression [(select (select A j) k)] return
    the pair [A] and [[j; k]]. *)
-let rec indexes_and_var_of_select' accum t = match node_of_term t with 
+let rec indexes_and_var_of_select' accum t = match destruct t with 
 
-  | T.FreeVar v -> (v, List.rev accum)
+  | T.Var v -> (v, List.rev accum)
 
-  | T.Node (s, [a; i]) when s == Symbol.s_select -> 
+  | T.App (s, [a; i]) when s == Symbol.s_select -> 
 
     indexes_and_var_of_select' (i :: accum) a
 
-  | T.Annot (t, _) ->  indexes_and_var_of_select' accum t
+  | T.Attr (t, _) ->  indexes_and_var_of_select' accum t
 
   |  _ -> invalid_arg "indexes_of_select"
 
@@ -377,19 +355,26 @@ let hash = T.hash
 (* Unique identifier for term *)
 let tag = T.tag
 
+module T_safe = 
+struct 
+  type t = T.safe T.t
+  let equal = T.equal
+  let compare = T.compare
+  let hash = T.hash
+end
 
 (* Hashtable *)
-module TermHashtbl = Hashtbl.Make (T)
+module TermHashtbl = Hashtbl.Make (T_safe)
 
 
 (* Set 
 
    TODO: Try patricia trees over hashcons tags for sets *)
-module TermSet = Set.Make (T)
+module TermSet = Set.Make (T_safe)
 
 
 (* Map *)
-module TermMap = Map.Make (T)
+module TermMap = Map.Make (T_safe)
 
 
 (* ********************************************************************* *)
@@ -748,10 +733,10 @@ let mk_var = T.mk_var
    TODO: type check arguments *)
 let mk_app = T.mk_app
       
-
+(*
 (* Return a hashconsed tree *)
 let mk_term = T.mk_term
-
+*)
 
 (* Return a hashconsed tree *)
 let mk_lambda = T.mk_lambda
@@ -1180,38 +1165,217 @@ let unnegate t = match T.destruct t with
   (* Top symbol is not a negation, then return unchanged *)
   | _ -> t 
 
+(* Convert (= 0 (mod t n)) to (divisble n t) 
 
-(* Convert (= 0 (mod t n)) to (divisble n t) *)
-let mod_to_divisible term = 
+   Use this function in a Term.map, therefore it considers only the
+   top symbol.
+   
+   TODO: Also accept negative constants as n. *)
+let mod_to_divisible env term = 
+
+  try 
+
+  let mod_to_divisible' l r = 
+    match T.destruct_unsafe env l, T.destruct_unsafe env r with 
+      
+      | T.Const c, T.App (s, [t; n]) 
+        when 
+          Symbol.is_numeral c &&  
+          Symbol.numeral_of_symbol c |> Numeral.(equal zero) &&
+          Symbol.equal_symbols s Symbol.s_mod ->
+        
+        (match T.destruct_unsafe env n with 
+          
+          | T.Const d when Symbol.is_numeral d ->
+            
+            (* Return (divisible n t) *)
+            Some (mk_divisible (Symbol.numeral_of_symbol d) t)
+              
+          | _ -> None)
+        
+      | _ -> None
+
+  in
+
+  (* Check top symbol in term *)
+  (match T.destruct_unsafe env term with 
+
+    (* Equality between two term? *)
+    | T.App (s, [l; r]) when Symbol.equal_symbols s Symbol.s_eq -> 
+
+      (* Try to convert (= 0 (mod t n)) to (divisible n t) *)
+      mod_to_divisible' l r 
+        
+      |> 
+
+      (function 
+
+        (* Return converted term *)
+        | Some term' -> Some term' 
+          
+        (* Try to convert (= (mod t n) 0) to (divisible n t) *)
+        | None -> mod_to_divisible' r l)
+
+      |> 
+
+      (function 
+        
+        (* Return converted term *)
+        | Some term' -> term' 
+        
+        (* Keep original term *)
+        | None -> term)
+
+    | _ -> term)
+
+  (* Keep original term if quantifed *)
+  with Invalid_argument _ -> term
+
+(*
+
+
+
+
+
+  let rewrite_eq (s, a) = 
+
+    if Symbol.equal_symbols s_eq s then 
+
+      match a with 
+
+        | [l; r] -> 
+
+          if Termis_node 
+
+        | _ -> term
+
+    else
+
+      term
+
+  in
+
+
+  if T.is_node term then 
+    
+    (T.node_symbol_of_t term, T.node_args_of_t term)
+    |> rewrite_eq
+    
+  else
+    
+    term
+  
+
+
+
+
+  let T.node_sym
+
+
+
+
+
+
+
+
+
+
 
   let mod_to_divisible' t_mod = 
-    
-    match T.node_of_t t_mod with 
+
+    if 
       
-      (* Term is (mod t s) *)
-      | T.Node (s_mod, [t; t_const]) when s_mod = Symbol.s_mod ->
-        
-        (match T.node_of_t t_const with 
+      (* Top symbol is mod? *)
+      T.node_symbol_of_t t_mod
+      |> Symbol.equal_symbols Symbol.s_mod 
+
+    then
+      
+      (* Get arguments of mod *)
+      match T.node_args_of_t t_mod with 
+
+        (* Get second argument of mod *)
+        | [_; t_const] ->
           
-          (* Term is a numeral *)
-          | T.Leaf n when Symbol.is_numeral n ->
+          (* Second argument is constant? *)
+          if T.is_leaf t_const then 
+
+            (* Get symbol of constant *)
+            let s_const = T.leaf_of_t t_const in
+
+            (* Constant is a numeral? *)
+            if Symbol.is_numeral s_const then 
+
+              (* Return (divisible n t) *)
+              mk_divisible (Symbol.numeral_of_symbol n) t
+
+            else
+
+              (* Constant is not a numeral  *)
+              term
+
+          else
             
+            (* Second argument is not a constant *)
+            term
+              
+        (* mod is a binary operator *)
+        | _ -> assert false
+
+
+    else
+
+      (* Top symbol is not mod *)
+      term
+
+  in
+
+  if 
+
+    (* Top symbol is equality? *)
+    T.node_symbol_of_t term
+    |> Symbol.equal_symbols Symbol.s_eq
+
+  then
+
+    match T.node_args_of_t term with 
+
+      | [l; r] -> 
+
+        (* First argument is constant? *)
+        if T.is_leaf l then 
+          
+          (* Get symbol of constant *)
+          let s_const = T.leaf_of_t t_const in
+          
+          (* Constant is a numeral? *)
+          if Symbol.is_numeral s_const then 
+            
+            
+
             (* Return (divisible n t) *)
             mk_divisible (Symbol.numeral_of_symbol n) t
               
-          (* Keep other terms unchanged *)
-          | _ -> term)
+            else
         
-      (* Keep other terms unchanged *)
+
+      (* Equation is not binary *)
       | _ -> term
 
-  in
-  
+  else
+
+    (* Top symbol is not equality *)
+    term
+
+
   match T.node_of_t term with
-    
+
     (* Term is (= 0 t) or (= t 0) *)
     | T.Node (s_eq, [l; r])
-      when s_eq == Symbol.s_eq && l == (mk_num_of_int 0) -> 
+      when 
+        s_eq == Symbol.s_eq && 
+        is_numeral l &&
+        Numeral.(equal (numeral_of_term l) zero) ->
 
       mod_to_divisible' r
 
@@ -1219,11 +1383,12 @@ let mod_to_divisible term =
       when s_eq == Symbol.s_eq && r == (mk_num_of_int 0) ->
 
       mod_to_divisible' l
-      
-  (* Keep other terms unchanged *)
-  | _ -> term
 
+    (* Keep other terms unchanged *)
+    | _ -> term
+*)
 
+(*
 (* Convert (divisble n t) to (= 0 (mod t n)) *)
 let divisible_to_mod term = 
 
@@ -1243,7 +1408,11 @@ let divisible_to_mod term =
 
     (* Keep other terms unchanged *)
     | _ -> term 
+*)
 
+let mod_to_divisible _ = assert false 
+
+let divisible_to_mod _ = assert false 
 
 (* Convert negative numerals and decimals to negative terms *)
 let nums_to_pos_nums term = match T.node_of_t term with 
@@ -1273,9 +1442,9 @@ let bump_state i term =
   (* Bump offset of state variables *)
   T.map
     (function _ -> function 
-       | t when is_free_var t -> 
+       | t when T.is_free_var t -> 
          mk_var 
-           (let v = free_var_of_term t in
+           (let v = T.free_var_of_t t in
             Var.bump_offset_of_state_var_instance i v)
        | _ as t -> t)
     term

@@ -104,19 +104,40 @@ module FeatureSet = Set.Make (struct
 type features = FeatureSet.t
 
 (* Try to remove top level quantifief by instantiating with fresh symbols *)
-let remove_top_level_quantifier removed t =
-  match Term.T.node_of_t t with
-  | Term.T.Forall lam | Term.T.Exists lam ->
-    let t' =
-      Term.T.sorts_of_lambda lam
-      |> List.map (fun t ->
-          (UfSymbol.mk_fresh_uf_symbol [] t
-           |> Term.mk_uf) @@ [] )
-      |> Term.T.instantiate lam
-    in
-    removed := true;
-    t'
-  | _ -> t
+let remove_top_level_quantifier removed (t : Term.T.unsafe Term.T.t) =
+
+  let instantiate_lambda lam =
+    Term.T.sorts_of_lambda lam
+    |> List.map (fun t ->
+        (UfSymbol.mk_fresh_uf_symbol [] t
+         |> Term.mk_uf) @@ [] |> Term.T.unsafe_of_safe)
+    |> Term.T.instantiate lam
+  in
+
+  if Term.T.is_exists t then 
+
+    (
+
+      let t' = Term.T.lambda_of_exists t |> instantiate_lambda in 
+      removed := true;
+      t'
+
+    )
+
+  else if Term.T.is_forall t then 
+
+    (
+
+      let t' = Term.T.lambda_of_forall t |> instantiate_lambda in
+      removed := true;
+      t'
+
+    )
+
+  else 
+
+    t
+
 
 (* find the smallest encompassing logic of a sort *)
 let rec logic_of_sort ty =

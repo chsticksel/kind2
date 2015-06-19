@@ -236,22 +236,22 @@ let instantiate_term { callers } term =
     ( fun _ term ->
 
       (* Is the term a free variable?. *)
-      if Term.is_free_var term then
+      if Term.T.is_free_var term then
 
         try
           (* Extracting state variable. *)
-          Term.free_var_of_term term
+          Term.T.free_var_of_t term
           (* Getting corresponding term, bumping if
                            necessary. *)
           |> term_of_var map
 
         with
           (* Variable is not in map, nothing to do. *)
-          Not_found -> term
+          Not_found -> term |> Term.T.safe_of_unsafe
 
       else
         (* Term is not a var, nothing to do. *)
-        term )
+        term  |> Term.T.safe_of_unsafe )
   in
 
   callers

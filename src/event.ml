@@ -68,8 +68,8 @@ let reduce_nodes_to_coi trans_sys nodes prop_name =
   let prop' = 
     Term.map
       (function _ -> function 
-         | t when Term.is_free_var t -> 
-           let v = Term.free_var_of_term t in
+         | t when Term.T.is_free_var t -> 
+           let v = Term.T.free_var_of_t t in
            if 
              Var.is_state_var_instance v
            then 
@@ -79,8 +79,8 @@ let reduce_nodes_to_coi trans_sys nodes prop_name =
              Term.mk_var
                (Var.mk_state_var_instance sv' o)
            else 
-             t
-         | t -> t)
+             t |> Term.T.safe_of_unsafe
+         | t -> t |> Term.T.safe_of_unsafe)
       prop 
   in
 

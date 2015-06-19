@@ -16,12 +16,35 @@
 
 *)
 
-(** Abstract syntax trees with binders and quantifiers
+(** Abstract terms with let bindings and quantifiers
 
-    An abstract syntax tree with binders extends a basic first-order
-    term structure with let bindings and quantifiers. The abstract
-    syntax tree is parametrized by the three types of its symbols,
-    its free variables and its sorts.
+    An abstract term extends a basic first-order term structure with
+    let bindings and existential and universal quantifiers. 
+
+    The abstract term is parametrized by the four types of symbols,
+    free variables, sorts and attributes, which are paramters to the
+    {!Make} functor. Physical equality [(==)] on the types
+    {!BaseTypes.symbol} {!BaseTypes.var}, {!BaseTypes.sort},
+    {!BaseTypes.attr} must imply structural equality [(=)]. This may
+    be achieved by using the {!Hashcons} module.
+
+    Values of types {!S.t} and {!S.lambda} are private hash-consed
+    phantom types. That means they can only be constructed with their
+    respective constructors and not outside the module to preserve
+    invariants. Structural equality and physical equality are
+    equivalent, thus physical equality [(==)] can always be used in
+    place of structural equality [(=)]. The types have a parameter
+    ['a] that is instantiated either to the type {!S.safe} or
+    {!S.unsafe}, indicating if the term is a proper term.
+
+    
+
+    A basic term is 
+
+    - a constant {!Leaf}
+    - a 
+
+
 
     A basic term is a tree structure, where a term is either a leaf
     containing a symbol or a variable. A term can also be a node
@@ -144,7 +167,7 @@ sig
   and lambda_t = private (lambda_node, unit) Hashcons.hash_consed
 
   and 'a lambda = private lambda_t
-    
+
   (** Abstract syntax term over symbols, variables and sort of the
       types given. Values of the type cannot be constructed outside
       this module in order to maintain invariants about the data
@@ -174,11 +197,11 @@ sig
       This type must remain private, because {!construct} does not
       check the invariants and would be a backdoor to construct unsafe
       terms. *)
-  and flat = private 
+  and 'a flat = private 
     | Var of var
     | Const of symbol 
-    | App of symbol * safe t list
-    | Attr of safe t * attr
+    | App of symbol * 'a t list
+    | Attr of 'a t * attr
 
   (** Comparison function on terms *)
   val compare : 'a t -> 'a t -> int
@@ -192,40 +215,79 @@ sig
   (** Unique identifier for term *)
   val tag : 'a t -> int
 
-  (** Constructor for a lambda expression *)
-  val mk_lambda : var list -> safe t -> safe lambda
+  (** Construct a lambda abstraction binding the given free variables
 
-  (** Beta-evaluate a lambda expression *)
-  val eval_lambda : safe lambda -> safe t list -> safe t
+      Generates a safe lambda if and only if the term is safe. *)
+  val mk_lambda : var list -> 'a t -> 'a lambda
 
+  (** Beta-evaluate a lambda expression
+
+      Generates a safe term only if the lambda is safe, and all values
+      are safe. Does not allow mixing safe and unsafe terms as
+      arguments. Does not allow evaluating a safe term with unsafe
+      values, or an unsafe term with safe values. *)
+  val eval_lambda : 'a lambda -> 'a t list -> 'a t
+(*
   (** Constructor for a term *)
   val mk_term : t_node -> unsafe t
+*)
+  (** Construct a term of a free variable
 
-  (** Constructor for a free variable with indexes *)
-  val mk_var : var -> safe t
+      Always generates a safe term, because there are no bound
+      variables in a leaf. *)
+  val mk_var : var -> 'a t
 
-  (** Constructor for a constant *)
-  val mk_const : symbol -> safe t
+  (** Construct a term of a constant symbol
 
-  (** Constructor for a function application *)
-  val mk_app : symbol -> safe t list -> safe t
+      Always generates a safe term, because there are no bound
+      variables in a leaf. The arity of the symbol is not checked. *)
+  val mk_const : symbol -> 'a t
 
-  (** Constructor for a let binding *)
-  val mk_let : (var * safe t) list -> safe t -> safe t
+  (** Apply the function symbol to the arguments 
 
-  (** Constructor for a let binding *)
-  val mk_let_elim : (var * safe t) list -> safe t -> safe t
+      Generates a safe term if and only if the arguments are safe
+      terms. Does not allow mixing safe and unsafe terms as
+      arguments. Must convert all safe terms to unsafe ones before in
+      those cases. *)
+  val mk_app : symbol -> 'a t list -> 'a t
 
-  (** Constructor for an existential quantification over an indexed
-      free variable *)
-  val mk_exists : var list -> safe t -> safe t
+  (** Bind free variables to terms 
 
-  (** Constructor for a universal quantification over an indexed
-      free variable *)
-  val mk_forall : var list -> safe t -> safe t
+      Generates a safe term if and only if all assignments are safe
+      terms. 
 
-  (** Constructor for an annotated term *)
-  val mk_annot : safe t -> attr -> safe t
+      Does not allow mixing safe and unsafe terms as arguments. Does
+      not allow binding variables in a safe term to unsafe values, or
+      variables in an unsafe term to safe values. Must convert all
+      safe terms to unsafe ones before in those cases. *)
+  val mk_let : (var * 'a t) list -> 'a t -> 'a t
+
+  (** Bind free variables to terms and reduce the binding to contain
+      only variables that occur in the term
+
+      Does not allow mixing safe and unsafe terms as arguments. Does not
+      allow binding variables in a safe term to unsafe values, or
+      variables in an unsafe term to safe values. Must convert all
+      safe terms to unsafe ones before in those cases. *)
+  val mk_let_elim : (var * 'a t) list -> 'a t -> 'a t
+
+  (** Existentially quantificaty free variables 
+
+      Generates a safe term if and only if the term quantified over is
+      safe. *)
+  val mk_exists : var list -> 'a t -> 'a t
+
+  (** Existentially quantificaty free variables 
+
+      Generates a safe term if and only if the term quantified over is
+      safe. *)
+  val mk_forall : var list -> 'a t -> 'a t
+
+  (** Annotate a term
+
+      Generates a safe term if and only if the term annotated is
+      safe. *)
+  val mk_annot : 'a t -> attr -> 'a t
 
   (** Return the node of a hashconsed term *)
   val node_of_t : 'a t -> t_node
@@ -243,7 +305,7 @@ sig
       function is called at each node of the term with the term being
       evaluated and the list of values computed for the subterms. Let
       bindings are lazily unfolded.  *)
-  val eval_t : (flat -> 'a list -> 'a) -> safe t -> 'a
+  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
 
   (** Tail-recursive bottom-up right-to-left map on the term
 
@@ -251,20 +313,81 @@ sig
       shifted. Therefore, the function [f] is called with the number of
       let bindings the subterm is under as first argument, so that the
       indexes can be adjusted in the subterm if necessary. *)
-  val map : (int -> unsafe t -> 'a t) -> 'a t -> 'a t
+  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
 
-  val map_top : (unsafe t -> 'a t option) -> 'a t -> 'a t
-  
+  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
+
+
+  (** {1 Predicates and Accessors} *)
+
+  (** Return [true] if the term is a free variable *)
+  val is_free_var : 'a t -> bool
+
+  (** Return the variable of a free variable term *)
+  val free_var_of_t : 'a t -> var
+
+  (** Return [true] if the term is a bound variable *)
+  val is_bound_var : 'a t -> bool
+
+  (** Return [true] if the term is a leaf symbol *)
+  val is_leaf : 'a t -> bool
+
+  (** Return the symbol of a leaf term *)
+  val leaf_of_t : 'a t -> symbol
+
+  (** Return [true] if the term is a function application *)
+  val is_node : 'a t -> bool
+
+  (** Return the symbol of a function application *)
+  val node_symbol_of_t : 'a t -> symbol
+
+  (** Return the arguments of a function application *)
+  val node_args_of_t : 'a t -> 'a t list
+
+  (** Return [true] if the term is a let binding *)
+  val is_let : 'a t -> bool
+
+  (** Return [true] if the term is an existential quantifier *)
+  val is_exists : 'a t -> bool
+
+  (** Return the lambda abstraction of an existential quantifier *)
+  val lambda_of_exists : 'a t -> 'a lambda
+
+  (** Return true if the term is a universal quantifier *)
+  val is_forall : 'a t -> bool 
+
+  (** Return the lambda abstraction of a universal quantifier *)
+  val lambda_of_forall : 'a t -> 'a lambda
+
+  (** Return true if the term is a named term *)
+  val is_annot : 'a t -> bool
+
+  (** Return the term of a named term *)
+  val annot_t_of_t : 'a t -> 'a t
+
+  (** Return the name of a named term *)
+  val annot_of_t : 'a t -> attr
+
   (** Return the top symbol of a term along with its subterms
 
       If the top symbol of a term is a let binding, the binding is
       distributed over the subterms. *)
-  val destruct : safe t -> flat
+  val destruct : safe t -> safe flat
+
+  val destruct_unsafe : 'b list -> 'a t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 
   (** Convert the flattened representation back into a term *)
-  val construct : flat -> safe t
+  val construct : 'a flat -> 'a t
+
+  (** Return a safe term if possible 
+
+      Fail with [Invalid_argument "safe_of_unsafe"] if there is a
+      bound variable whose binder is not in the term. *)
+  val safe_of_unsafe : 'a t -> safe t
+
+  val unsafe_of_safe : 'a t -> unsafe t
 
   (** Import a term into the hashcons table by rebuilding it bottom
       up *)
@@ -276,10 +399,10 @@ sig
 
   (** Pretty-print a term *)
   val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
-    
+
   (** Pretty-print a term *)
   val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
-    
+
   val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
     ?db:int -> Format.formatter -> 'a lambda -> unit
 
@@ -291,10 +414,10 @@ sig
 
   (** Pretty-print a lambda abstraction *)
   val pp_print_lambda : ?db:int -> Format.formatter -> 'a lambda -> unit
-    
+
   (** Pretty-print a lambda abstraction *)
   val print_lambda : ?db:int -> 'a lambda -> unit
-    
+
   val stats : unit -> int * int * int * int * int * int
   
 end

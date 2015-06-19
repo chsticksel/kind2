@@ -521,7 +521,7 @@ let ensure_symbol_qf_lira s =
     failwith msg
 
 
-
+(*
 let rec ensure_lambda_qf_lira l =
   let open Term.T in
   match node_of_lambda l with
@@ -540,6 +540,22 @@ and ensure_term_qf_lira t =
     List.iter ensure_term_qf_lira a
   | Exists lam | Forall lam -> ensure_lambda_qf_lira lam
   | Annot (t, _) -> ensure_term_qf_lira t
+*)
+
+let ensure_term_qf_lira t =
+
+  Term.T.map
+    (fun _ t -> match Term.T.node_of_t t with
+       | Term.T.FreeVar _ | Term.T.BoundVar _ -> t
+       | Term.T.Leaf s -> ensure_symbol_qf_lira s; t
+       | Term.T.Node (s, a) ->
+         ensure_symbol_qf_lira s; t
+       | Term.T.Let (lam, a) -> t
+       | Term.T.Exists lam | Term.T.Forall lam -> t
+       | Term.T.Annot _ -> t)
+    t
+     
+  |> ignore
 
 let fail_when_arith solver t =
   if solver.solver_config.solver_arith_only then ensure_term_qf_lira t
@@ -845,8 +861,8 @@ let get_value solver expr_list =
                vars_assign 
                (let t = Conv.var_term_of_smtexpr e in 
                 (* TODO: deal with arrays*)
-                assert (Term.is_free_var t);
-                Term.free_var_of_term t)
+                assert (Term.T.is_free_var t);
+                Term.T.free_var_of_t t)
                (Model.Term (Conv.term_of_smtexpr v))
 
            (* Ignore expressions that are not state variables *)
@@ -923,8 +939,8 @@ let get_model solver =
                
                (let t = Conv.var_term_of_smtexpr e in 
                 (* TODO: deal with arrays*)
-                assert (Term.is_free_var t);
-                Term.free_var_of_term t |> 
+                assert (Term.T.is_free_var t);
+                Term.T.free_var_of_t t |> 
                 Var.unrolled_uf_of_state_var_instance,
                 Model.Term (Conv.term_of_smtexpr v)) :: a
                  

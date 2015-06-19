@@ -20,6 +20,7 @@ open Lib
 
 (* Abbreviation for module name *)
 module H = Hashcons
+(* module H = WeakHashcons *)
 
 
 (* Set over integers *)
@@ -103,11 +104,11 @@ sig
       
   and t_prop = private { bound_vars : int list } 
 
-  and flat = private
+  and 'a flat = private
     | Var of var
     | Const of symbol
-    | App of symbol * safe t list
-    | Attr of safe t * attr
+    | App of symbol * 'a t list
+    | Attr of 'a t * attr
 
   val compare : 'a t -> 'a t -> int
 
@@ -117,27 +118,27 @@ sig
 
   val tag : 'a t -> int
 
-  val mk_lambda : var list -> safe t -> safe lambda
+  val mk_lambda : var list -> 'a t -> 'a lambda
 
-  val eval_lambda : safe lambda -> safe t list -> safe t
-
+  val eval_lambda : 'a lambda -> 'a t list -> 'a t
+(*
   val mk_term : t_node -> unsafe t
-
-  val mk_var : var -> safe t
+*)
+  val mk_var : var -> 'a t
   
-  val mk_const : symbol -> safe t
+  val mk_const : symbol -> 'a t
 
-  val mk_app : symbol -> safe t list -> safe t
+  val mk_app : symbol -> 'a t list -> 'a t
 
-  val mk_let : (var * safe t) list -> safe t -> safe t
+  val mk_let : (var * 'a t) list -> 'a t -> 'a t
 
-  val mk_let_elim : (var * safe t) list -> safe t -> safe t
+  val mk_let_elim : (var * 'a t) list -> 'a t -> 'a t
 
-  val mk_exists : var list -> safe t -> safe t
+  val mk_exists : var list -> 'a t -> 'a t
 
-  val mk_forall : var list -> safe t -> safe t
+  val mk_forall : var list -> 'a t -> 'a t
 
-  val mk_annot : safe t -> attr -> safe t
+  val mk_annot : 'a t -> attr -> 'a t
 
   val node_of_t : 'a t -> t_node
 
@@ -149,19 +150,55 @@ sig
 (*
   val eval : (symbol -> 'a list -> 'a) -> t -> 'a
 *)
-  val eval_t : (flat -> 'a list -> 'a) -> safe t -> 'a
+  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
 
-  val map : (int -> unsafe t -> 'a t) -> 'a t -> 'a t
+  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
 
-  val map_top : (unsafe t -> 'a t option) -> 'a t -> 'a t
+  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
 
-  val destruct : safe t -> flat
+  val is_free_var : 'a t -> bool
+
+  val free_var_of_t : 'a t -> var
+
+  val is_bound_var : 'a t -> bool
+
+  val is_leaf : 'a t -> bool
+
+  val leaf_of_t : 'a t -> symbol
+
+  val is_node : 'a t -> bool
+
+  val node_symbol_of_t : 'a t -> symbol
+
+  val node_args_of_t : 'a t -> 'a t list
+
+  val is_let : 'a t -> bool
+
+  val is_exists : 'a t -> bool
+
+  val lambda_of_exists : 'a t -> 'a lambda
+
+  val is_forall : 'a t -> bool 
+
+  val lambda_of_forall : 'a t -> 'a lambda
+
+  val is_annot : 'a t -> bool
+
+  val annot_t_of_t : 'a t -> 'a t
+
+  val annot_of_t : 'a t -> attr
+
+  val destruct : safe t -> safe flat
+
+  val destruct_unsafe : 'b list -> 'a t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 
-  val construct : flat -> safe t
+  val construct : 'a flat -> 'a t
 
-  (* val safe_of_unsafe : 'a t -> safe t *)
+  val safe_of_unsafe : 'a t -> safe t
+
+  val unsafe_of_safe : 'a t -> unsafe t
 
   val import : 'a t -> 'a t
 
@@ -264,11 +301,11 @@ struct
   and 'a t = t_t 
     
   (* Flattened term without binders at the top symbol *)
-  type flat = 
+  type 'a flat = 
     | Var of var
     | Const of symbol
-    | App of symbol * safe t list
-    | Attr of safe t * attr
+    | App of symbol * 'a t list
+    | Attr of 'a t * attr
 
   (* Return property of term *)
   let hash_of_term { H.hkey = h } = h
@@ -565,22 +602,8 @@ struct
   let ht_annot t a = 
     let n = Annot (t, a) in
     Ht.hashcons ht n (prop_of_term_node n)
-(*
-  let safe_of_unsafe x = 
 
-    map
 
-      (fun i -> function 
-      
-        (* Fail if index of bound variable greater than number of
-           lambda bindings *)
-        | { H.node = BoundVar j } as t -> assert (i >= j); t
-            
-        (* Keep term otherwise *)
-        | t -> t)
-
-      t
-*)
 
   (* ********************************************************************* *)
   (* Pretty-printing                                                       *)
@@ -1671,18 +1694,114 @@ struct
   let node_of_t { Hashcons.node = n } = n
 
   (* Return the sorts of a hashconsed lambda abstraction *)
-  let sorts_of_lambda { Hashcons.node = L (v, _) } = v
+  let sorts_of_lambda { H.node = L (v, _) } = v
 
   (* Return the node of a hashconsed lamda abstraction *)
-  let node_of_lambda { Hashcons.node = l } = l
+  let node_of_lambda { H.node = l } = l
 
   (* Return the tag of a hashconsed term *)
-  let tag_of_t { Hashcons.tag = n } = n
+  let tag_of_t { H.tag = n } = n
 
 
   (* ********************************************************************* *)
   (* Accessing the top node of the term                                    *)
   (* ********************************************************************* *)
+
+  (* Return true if the term is a free variable *)
+  let is_free_var = function
+    | { H.node = FreeVar _ } -> true 
+    | _ -> false 
+
+  
+  (* Return the variable of a free variable term *)
+  let free_var_of_t = function
+    | { H.node = FreeVar v } -> v
+    | _ -> invalid_arg "free_var_of_t"
+
+
+  (* Return true if the term is a bound variable *)
+  let is_bound_var = function
+    | { H.node = BoundVar _ } -> true 
+    | _ -> false 
+
+
+  (* Return true if the term is a leaf symbol *)
+  let is_leaf = function
+    | { H.node = Leaf _ } -> true 
+    | _ -> false 
+
+
+  (* Return the symbol of a leaf term *)
+  let leaf_of_t = function
+    | { H.node = Leaf s } -> s
+    | _ -> invalid_arg "leaf_of_t"
+
+
+  (* Return true if the term is a function application *)
+  let is_node = function
+    | { H.node = Node _ } -> true 
+    | _ -> false 
+
+
+  (* Return the symbol of a function application *)
+  let node_symbol_of_t = function
+    | { H.node = Node (s, _) } -> s 
+    | _ -> invalid_arg "node_symbol_of_t"
+
+
+  (* Return the arguments of a function application *)
+  let node_args_of_t = function
+    | { H.node = Node (_, l) } -> l 
+    | _ -> invalid_arg "node_args_of_t"
+
+
+  (* Return true if the term is a let binding *)
+  let is_let = function
+    | { H.node = Let _ } -> true 
+    | _ -> false 
+
+
+  (* Return true if the term is an existential quantifier *)
+  let is_exists = function
+    | { H.node = Exists _ } -> true 
+    | _ -> false 
+
+
+  (* Return the lambda abstraction of an existential quantifier *)
+  let lambda_of_exists = function
+    | { H.node = Exists l } -> l
+    | _ -> invalid_arg "lambda_of_exists"
+
+
+  (* Return true if the term is a universal quantifier *)
+  let is_forall = function
+    | { H.node = Forall _ } -> true 
+    | _ -> false 
+
+
+  (* Return the lambda abstraction of a universal quantifier *)
+  let lambda_of_forall = function
+    | { H.node = Forall l } -> l
+    | _ -> invalid_arg "lambda_of_forall"
+
+
+  (* Return true if the term is a named term *)
+  let is_annot  = function
+    | { H.node = Annot (_, a) } -> true
+    | _ -> false
+
+
+  (* Return the term in an annotation *)
+  let annot_t_of_t  = function
+    | { H.node = Annot (t, _) } -> t
+    | _ -> invalid_arg "annot_t_of_t"
+
+
+  (* Return the annotation of an annotated named term *)
+  let annot_of_t  = function
+    | { H.node = Annot (_, a) } -> a
+    | _ -> invalid_arg "annot_of_t"
+
 
   (* Return the top symbol of a term along with its subterms
 
@@ -1791,8 +1910,28 @@ struct
     | _ -> assert false
 
 
+  let destruct_unsafe _ = destruct
+
+
   let instantiate l b = ht_let l b
-    
+
+      
+  let safe_of_unsafe t = 
+
+    map
+
+      (fun i -> function 
+      
+        (* Fail if index of bound variable greater than number of
+           lambda bindings *)
+        | { H.node = BoundVar j } as t -> assert (i >= j); t
+            
+        (* Keep term otherwise *)
+        | t -> t)
+
+      t
+
+  let unsafe_of_safe t = t
 
 end
 

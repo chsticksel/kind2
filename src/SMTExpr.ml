@@ -104,10 +104,10 @@ struct
 
 
   (* Convert an SMT expression to a variable *)
-  let rec var_term_of_smtexpr e = 
+  let rec var_term_of_smtexpr' e = 
 
     (* Keep bound variables untouched *)
-    if Term.is_bound_var e then               
+    if Term.T.is_bound_var e then               
 
       invalid_arg 
         "var_of_smtexpr: Bound variable"
@@ -115,7 +115,7 @@ struct
     else
 
       (* Check top symbol of SMT expression *)
-      match Term.destruct e with
+      match Term.T.safe_of_unsafe e |> Term.destruct with
 
         (* An unrolled variable is a constant term if it is not an
            array. *)
@@ -132,7 +132,7 @@ struct
                 (Format.asprintf
                    "var_of_smtexpr: %a\
                     No state variable found for uninterpreted function symbol"
-                   Term.pp_print_term e)
+                   Term.pp_print_term (Term.T.safe_of_unsafe e))
           )
 
         (* An unrolled variable might be an array in which case it would
@@ -155,12 +155,12 @@ struct
                (Format.asprintf
                   "var_of_smtexpr: %a\
                    No state variable found for uninterpreted function symbol"
-                  Term.pp_print_term e)
+                  Term.pp_print_term (Term.T.safe_of_unsafe e))
 
           )
 
         (* Annotated term *)
-        | Term.T.Attr (t, _) -> var_term_of_smtexpr t
+        | Term.T.Attr (t, _) -> Term.T.unsafe_of_safe t |> var_term_of_smtexpr' 
 
         (* Other expressions *)
         | Term.T.App _ 
@@ -171,12 +171,15 @@ struct
              Must be an uninterpreted function"
 
 
+  let var_term_of_smtexpr e = 
+    Term.T.unsafe_of_safe e |> var_term_of_smtexpr' |> Term.T.safe_of_unsafe
+
   (* Convert a term to an expression for the SMT solver *)
   let term_of_smtexpr term =
 
     Term.map
       (function _ -> function t -> 
-         try var_term_of_smtexpr t with Invalid_argument _ -> t)
+         try var_term_of_smtexpr' t with Invalid_argument _ -> t |> Term.T.safe_of_unsafe)
       term
 
 
@@ -223,18 +226,18 @@ struct
         (function _ -> function
 
            (* Term is a free variable *)
-           | t when Term.is_free_var t -> 
+           | t when Term.T.is_free_var t -> 
 
              (* Get variable of term *)
-             let v = Term.free_var_of_term t in
+             let v = Term.T.free_var_of_t t in
 
              (* Try to convert free variable to temporary variable for
                 quantification, otherwise convert variable to
                 uninterpreted function *)
              (try 
-                Term.mk_var (List.assq v var_to_temp_var) 
-              with Not_found -> smtexpr_of_var v [])
-
+                Term.mk_var (List.assq v var_to_temp_var) |> Term.T.unsafe_of_safe
+              with Not_found -> smtexpr_of_var v [] |> Term.T.unsafe_of_safe)
+(*
            (* Term is a select operation *)
            | t when Term.is_select t -> 
 
@@ -244,7 +247,7 @@ struct
              (* Create uninterpreted function with indexes as
                 arguments from variable *)
              smtexpr_of_var v i
-
+*)
            (* Change divisibility symbol to modulus operator *)
            | t -> Term.divisible_to_mod (Term.nums_to_pos_nums t)
 

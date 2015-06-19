@@ -74,10 +74,10 @@ module TermMap : Map.S with type key = t
 
 
 (** {1 Constructors} *)
-
+(*
 (** Create a hashconsed term *)
 val mk_term : T.t_node -> t
-
+*)
 (** Create a hashconsed lambda expression *)
 val mk_lambda : Var.t list -> t -> lambda
 
@@ -319,10 +319,10 @@ val type_of_term : t -> Type.t
 (* val node_of_term : t -> T.t_node *)
 
 (** Flatten top node of term *)
-val destruct : t -> T.flat
+val destruct : t -> T.safe T.flat
 
 (** Convert a flat term to a term *)
-val construct : T.flat -> t
+val construct : T.safe T.flat -> t
 
 (** Return true if the term is a simple Boolean atom, that is, has
     type Boolean and does not contain subterms of type Boolean *)
@@ -330,39 +330,6 @@ val is_atom : t -> bool
 
 (** Return true if the top symbol of the term is a negation *)
 val is_negated : t -> bool
-
-(** Return [true] if the term is a free variable *)
-val is_free_var : t -> bool
-
-(** Return the variable of a free variable term *)
-val free_var_of_term : t -> Var.t
-
-(** Return [true] if the term is a bound variable *)
-val is_bound_var : t -> bool
-
-(** Return [true] if the term is a leaf symbol *)
-val is_leaf : t -> bool
-
-(** Return the symbol of a leaf term *)
-val leaf_of_term : t -> Symbol.t
-
-(** Return [true] if the term is a function application *)
-val is_node : t -> bool
-
-(** Return the symbol of a function application *)
-val node_symbol_of_term : t -> Symbol.t
-
-(** Return the arguments of a function application *)
-val node_args_of_term : t -> t list
-
-(** Return [true] if the term is a let binding *)
-val is_let : t -> bool
-
-(** Return [true] if the term is an existential quantifier *)
-val is_exists : t -> bool
-
-(** Return true if the term is a universal quantifier *)
-val is_forall : t -> bool 
 
 (** Return true if the term is a named term *)
 val is_named : t -> bool
@@ -427,7 +394,7 @@ val string_of_lambda : lambda -> string
     function is called at each node of the term with the the term
     being evaluated, and the list of values computed for the
     subterms. Let bindings are lazily unfolded. *)
-val eval_t : (T.flat -> 'a list -> 'a) -> t -> 'a
+val eval_t : (T.safe T.flat -> 'a list -> 'a) -> t -> 'a
 
 (** Beta-evaluate a lambda expression *)
 val eval_lambda : lambda -> t list -> t
@@ -443,14 +410,14 @@ val map : (int -> T.unsafe T.t -> 'a T.t) -> t -> t
 (** Convert [(= 0 (mod t n))] to [(divisble n t)]
 
     The term [n] must be an integer numeral. *)
-val mod_to_divisible : t -> t
+val mod_to_divisible : 'a T.t -> 'a T.t
 
 (** Convert [(divisble n t)] to [(= 0 (mod t n))] *)
-val divisible_to_mod : t -> t
+val divisible_to_mod : 'a T.t -> 'a T.t
 
 (** Convert negative numerals and decimals to negations of their
     absolute value *)
-val nums_to_pos_nums : t -> t 
+val nums_to_pos_nums : 'a T.t -> 'a T.t 
 
 (** Add to offset of state variable instances
 
