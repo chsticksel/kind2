@@ -21,12 +21,19 @@
     An abstract term extends a basic first-order term structure with
     let bindings and existential and universal quantifiers. 
 
+    You should generally prefer to use the functions provided in the
+    {!Term} module. The functions provided by this module are more
+    elementary and less safe.
+
+    (** {2 Functorial Interface} *)
+
     The abstract term is parametrized by the four types of symbols,
     free variables, sorts and attributes, which are paramters to the
     {!Make} functor. Physical equality [(==)] on the types
-    {!BaseTypes.symbol} {!BaseTypes.var}, {!BaseTypes.sort},
+    {!BaseTypes.symbol} {!BaseTypes.var}, {!BaseTypes.sort}, and also
     {!BaseTypes.attr} must imply structural equality [(=)]. This may
-    be achieved by using the {!Hashcons} module.
+    be achieved by using the {!Hashcons} module. Note that it is also
+    required to be able to compare attributes with physical equality.
 
     Values of types {!S.t} and {!S.lambda} are private hash-consed
     phantom types. That means they can only be constructed with their
@@ -37,7 +44,7 @@
     ['a] that is instantiated either to the type {!S.safe} or
     {!S.unsafe}, indicating if the term is a proper term.
 
-    
+
 
     A basic term is 
 
@@ -143,6 +150,8 @@ end
 module type S =
 sig
 
+  (** {1 Type Definitions} *)
+
   (** Symbol *)
   type symbol
 
@@ -155,6 +164,11 @@ sig
   (** Attribute *)
   type attr
 
+  (** Types to instantiate the phantom type paramter
+
+      A term is safe if no bound variable has an index greater than
+      the number of lambdas it is under. This may or may not hold for
+      an unsafe term.*)
   type safe
   type unsafe
 
@@ -166,13 +180,14 @@ sig
   (** Hashconsed lambda abstraction *)
   and lambda_t = private (lambda_node, unit) Hashcons.hash_consed
 
+  (** Lambda abstraction with a phantom type *)
   and 'a lambda = private lambda_t
 
-  (** Abstract syntax term over symbols, variables and sort of the
-      types given. Values of the type cannot be constructed outside
-      this module in order to maintain invariants about the data
-      type. Use the constructors {!mk_var}, {!mk_const}, {!mk_app},
-      {!mk_let}, {!mk_exists} and {!mk_forall}. *)
+  (** Term over symbols, variables and sort of the types given. Values
+      of the type cannot be constructed outside this module in order
+      to maintain invariants about the data type. Use the respective
+      constructors {!mk_var}, {!mk_const}, {!mk_app}, {!mk_let},
+      {!mk_exists} and {!mk_forall}. *)
   and t_node = private
     | FreeVar of var
     | BoundVar of int
@@ -186,27 +201,32 @@ sig
   (** Properties of a term *)
   and t_prop = private { bound_vars : int list } 
 
-  (** Hashconsed abstract syntax term *)
+  (** Hashconsed term *)
   and t_t = private (t_node, t_prop) Hashcons.hash_consed
 
+  (** Term with a phantom type *)
   and 'a t = private t_t 
 
-  (** Term over symbols, variables and sort of the types given where
-      the topmost symbol is not a binding 
+  (** Enviroment containing bindings for variables to destruct an
+      unsafe term *)
+  type 'a env
 
-      This type must remain private, because {!construct} does not
-      check the invariants and would be a backdoor to construct unsafe
-      terms. *)
-  and 'a flat = private 
+  (** Term over symbols, variables and sort of the types given where
+      the topmost symbol is not a binder
+
+  *)
+  type 'a flat = private 
     | Var of var
     | Const of symbol 
     | App of symbol * 'a t list
     | Attr of 'a t * attr
 
-  (** Comparison function on terms *)
+  (** {1 Predicates} *)
+
+  (** Total order on terms *)
   val compare : 'a t -> 'a t -> int
 
-  (** Equality function on terms *)
+  (** Equality on terms *)
   val equal : 'a t -> 'a t -> bool
 
   (** Hash function on terms *)
@@ -214,6 +234,8 @@ sig
 
   (** Unique identifier for term *)
   val tag : 'a t -> int
+
+  (** {1 Constructors} *)
 
   (** Construct a lambda abstraction binding the given free variables
 
@@ -227,10 +249,7 @@ sig
       arguments. Does not allow evaluating a safe term with unsafe
       values, or an unsafe term with safe values. *)
   val eval_lambda : 'a lambda -> 'a t list -> 'a t
-(*
-  (** Constructor for a term *)
-  val mk_term : t_node -> unsafe t
-*)
+
   (** Construct a term of a free variable
 
       Always generates a safe term, because there are no bound
@@ -289,35 +308,6 @@ sig
       safe. *)
   val mk_annot : 'a t -> attr -> 'a t
 
-  (** Return the node of a hashconsed term *)
-  val node_of_t : 'a t -> t_node
-
-  (** Return the node of a hashconsed lamda abstraction *)
-  val node_of_lambda : 'a lambda -> lambda_node
-
-  (** Return the sorts of a hashconsed lambda abstraction *)
-  val sorts_of_lambda : 'a lambda -> sort list
-
-  (** Return the unique tag of a hashconsed term *)
-  val tag_of_t : 'a t -> int
-
-  (** Evaluate the term bottom-up and right-to-left. The evaluation
-      function is called at each node of the term with the term being
-      evaluated and the list of values computed for the subterms. Let
-      bindings are lazily unfolded.  *)
-  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
-
-  (** Tail-recursive bottom-up right-to-left map on the term
-
-      Not every subterm is a proper term, since the de Bruijn indexes are
-      shifted. Therefore, the function [f] is called with the number of
-      let bindings the subterm is under as first argument, so that the
-      indexes can be adjusted in the subterm if necessary. *)
-  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
-
-  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
-
-
   (** {1 Predicates and Accessors} *)
 
   (** Return [true] if the term is a free variable *)
@@ -367,6 +357,37 @@ sig
 
   (** Return the name of a named term *)
   val annot_of_t : 'a t -> attr
+
+  (** {2 } *)
+
+  (** Return the node of a hashconsed term *)
+  val node_of_t : 'a t -> t_node
+
+  (** Return the node of a hashconsed lamda abstraction *)
+  val node_of_lambda : 'a lambda -> lambda_node
+
+  (** Return the sorts of a hashconsed lambda abstraction *)
+  val sorts_of_lambda : 'a lambda -> sort list
+
+  (** Return the unique tag of a hashconsed term *)
+  val tag_of_t : 'a t -> int
+
+  (** Evaluate the term bottom-up and right-to-left. The evaluation
+      function is called at each node of the term with the term being
+      evaluated and the list of values computed for the subterms. Let
+      bindings are lazily unfolded.  *)
+  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
+
+  (** Tail-recursive bottom-up right-to-left map on the term
+
+      Not every subterm is a proper term, since the de Bruijn indexes are
+      shifted. Therefore, the function [f] is called with the number of
+      let bindings the subterm is under as first argument, so that the
+      indexes can be adjusted in the subterm if necessary. *)
+  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
+
+  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
+
 
   (** Return the top symbol of a term along with its subterms
 

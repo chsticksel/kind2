@@ -104,7 +104,9 @@ sig
       
   and t_prop = private { bound_vars : int list } 
 
-  and 'a flat = private
+  type 'a env
+
+  type 'a flat = private
     | Var of var
     | Const of symbol
     | App of symbol * 'a t list
@@ -121,9 +123,7 @@ sig
   val mk_lambda : var list -> 'a t -> 'a lambda
 
   val eval_lambda : 'a lambda -> 'a t list -> 'a t
-(*
-  val mk_term : t_node -> unsafe t
-*)
+
   val mk_var : var -> 'a t
   
   val mk_const : symbol -> 'a t
@@ -139,22 +139,6 @@ sig
   val mk_forall : var list -> 'a t -> 'a t
 
   val mk_annot : 'a t -> attr -> 'a t
-
-  val node_of_t : 'a t -> t_node
-
-  val node_of_lambda : 'a lambda -> lambda_node
-
-  val sorts_of_lambda : 'a lambda -> sort list
-
-  val tag_of_t : 'a t -> int
-(*
-  val eval : (symbol -> 'a list -> 'a) -> t -> 'a
-*)
-  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
-
-  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
-
-  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
 
   val is_free_var : 'a t -> bool
 
@@ -187,6 +171,22 @@ sig
   val annot_t_of_t : 'a t -> 'a t
 
   val annot_of_t : 'a t -> attr
+
+  val node_of_t : 'a t -> t_node
+
+  val node_of_lambda : 'a lambda -> lambda_node
+
+  val sorts_of_lambda : 'a lambda -> sort list
+
+  val tag_of_t : 'a t -> int
+(*
+  val eval : (symbol -> 'a list -> 'a) -> t -> 'a
+*)
+  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
+
+  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
+
+  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
 
   val destruct : safe t -> safe flat
 
@@ -223,7 +223,7 @@ sig
 end    
 
 
-(* Functor to create a higher-order abstract syntax tree module *)
+(* Functor to create a term module *)
 module Make(T : BaseTypes) : 
   (S with type symbol = T.symbol 
       and type var = T.var 
@@ -231,9 +231,9 @@ module Make(T : BaseTypes) :
       and type attr = T.attr) =
 struct 
 
-  (* ********************************************************************* *)
-  (* Type definitions                                                      *)
-  (* ********************************************************************* *)
+  (* ************************************************************** *)
+  (* Type Definitions                                               *) 
+  (* ************************************************************** *)
 
   (* Symbol, constrained by the type of the input module *)
   type symbol = T.symbol
@@ -247,8 +247,14 @@ struct
   (* Attribute, constrained by the type of the input module *)
   type attr = T.attr
 
+  (* Type to instantiate phantom type parameter: term is safe, that
+     is, no bound variable has an index greater than the number of
+     lambdas it is under. *)
   type safe
 
+  (* Type to instantiate phantom type parameter: term may contain a
+     bound variable with an index greater than the number of lambdas
+     it is under. *)
   type unsafe
 
   (* Typed lambda abstraction
@@ -263,15 +269,23 @@ struct
   (* Hashconsed typed lambda abstraction *)
   and lambda_t = (lambda_node, unit) H.hash_consed
 
+  (* Lambda abstraction as a phantom type *)
   and 'a lambda = lambda_t
       
-  (* Abstract syntax term with let bindings and quantifiers *)
+  (* Term with let bindings and quantifiers *)
   and t_node = 
 
     (* Free variable *)
     | FreeVar of var
 
-    (* Bound variable with its de Bruijn index *)
+    (* Bound variable with its de Bruijn index 
+
+       We use de Bruijn indexes in reverse. The variable with index i
+       is bound to the i-th lambda abstraction:
+
+       \x. \y. (+ x y) 
+
+       x's index is 2, y's index is 1. *)
     | BoundVar of int
 
     (* Constant, i.e. a nullary symbol *)
@@ -293,13 +307,37 @@ struct
     | Annot of t_t * attr
 
   (* Property of a term node *)
-  and t_prop = { bound_vars : int list } 
+  and t_prop = 
+    { 
 
-  (* Hashconsed abstract syntax term *)
+      (* Indexes of bound variables occurring in the term *)
+      bound_vars : int list 
+
+    } 
+
+  (* Hashconsed term *)
   and t_t = (t_node, t_prop) H.hash_consed
 
+  (* Term as a phantom type *)
   and 'a t = t_t 
     
+  (* Environment for a bound variable *)
+  type 'a bvar_env = 
+
+    (* Bound variable is substituted with a term in another
+       environment *)
+    | Subst of 'a t * 'a env
+
+    (* Bound variable is universally quantified *)
+    | QuantForall 
+
+    (* Bound variable is existentially quantified *)
+    | QuantExists
+
+  (* Environment at a position in a term for all bound variables in
+     the term *)
+  and 'a env = 'a bvar_env list 
+
   (* Flattened term without binders at the top symbol *)
   type 'a flat = 
     | Var of var
@@ -307,7 +345,12 @@ struct
     | App of symbol * 'a t list
     | Attr of 'a t * attr
 
-  (* Return property of term *)
+
+  (* ************************************************************** *)
+  (* Types                                                          *) 
+  (* ************************************************************** *)
+
+  (* Return hash of term *)
   let hash_of_term { H.hkey = h } = h
 
   (* Return property of term *)
@@ -323,15 +366,21 @@ struct
     (* Type of the node property *)
     type prop = unit
 
-    (* Equality: abstracted terms are equal, number of variables and
-       their types are equal *)
+    (* Two lambda abstractions are equal if the terms under the
+       lambdas are equal, and number of variables and their types are
+       equal *)
     let equal l1 l2 = match l1, l2 with
       | L (i1, t1), L (i2, t2) -> 
         (t1 == t2) &&
         (List.length i1 = List.length i2) &&
         (List.for_all2 (==) i1 i2)
 
-    (* Take hash of abstracted term, ignoring the type *)
+    (* Take hash of term under lambda, ignoring the type 
+
+       If terms are syntactically equal, then the bound variables
+       usually have the same types. That fails if there are
+       polymorphic function symbols, but hashing does not need to be
+       perfect. *)
     let hash (L (_, t)) = hash_of_term t
 
   end
@@ -342,7 +391,10 @@ struct
   (* Hashcons table for lambda abstractions *)
   let hl = Hlambda.create 251
 
-  (* Unsafe constructor for hashconsed lambda abstraction *)
+  (* Unsafe constructor for hashconsed lambda abstraction 
+
+     Lambda abstraction don't have properties, hence the unit value as
+     the last argument. *)
   let hl_lambda s t = Hlambda.hashcons hl (L (s, t)) ()
 
   (* Hashconsed terms *)
@@ -361,7 +413,7 @@ struct
       (* Equality on free variables: variables are physically equal *)
       | FreeVar v1, FreeVar v2 -> v1 == v2
 
-      (* Equality on integer de Bruijn indexes *)
+      (* Equality bound variables: integer de Bruijn indexes are equal *)
       | BoundVar v1, BoundVar v2 -> v1 = v2 
 
       (* Physical equality on leaves *)
@@ -377,7 +429,12 @@ struct
 
       (* Equality of let bindings: lambda abstractions are physically
          equal, number of terms are equal and respective terms are
-         physically equal *)
+         physically equal
+
+         If two lambda abstractions are equal, then they should
+         abstract the same number of terms, and the lists [b1] and
+         [b2] should be of equal length. Check this just in case to
+         avoid getting a runtime error from List.for_all2. *)
       | Let (l1, b1), Let (l2, b2) ->
         (l1 == l2) &&
         (List.length b1 = List.length b2) &&
@@ -405,7 +462,8 @@ struct
     (* Hash of a term: interleave hash values of kinds *)
     let hash = function 
 
-      (* Hash of a free variable: delegate *)
+      (* Hash of a free variable: delegate to hash function of
+         variable *)
       | FreeVar v -> 
 
         safe_hash_interleave
@@ -415,7 +473,7 @@ struct
       (* Hash of bound variable is the de Bruijn index *)
       | BoundVar i -> safe_hash_interleave i 8 1
 
-      (* Hash of symbol: delegate *)
+      (* Hash of symbol: delegate to hash function of symbol *)
       | Leaf s -> safe_hash_interleave (T.hash_of_symbol s) 8 2
 
       (* Hash of a node: hash a list of hashes of symbol and arguments *)
@@ -455,9 +513,10 @@ struct
   (* Hashcons table for terms *)
   let ht = Ht.create 251
 
+  (* Statistics are the statistics of the hashcons table of terms *)
   let stats () = Ht.stats ht
 
-  (* Ordering of terms based on tags *)
+  (* Ordering of terms based on unique tags from hash consing *)
   let compare { H.tag = t1 } { H.tag = t2 } = Pervasives.compare t1 t2
 
   (* Equality of terms based on tags *)
@@ -795,7 +854,7 @@ struct
 
     | Const s -> Format.fprintf ppf "Const@ %a" (pp_symbol ?arity:(Some 0)) s
 
-    | App (s, l) -> 
+    | App (s, l) ->
 
       Format.fprintf 
         ppf 

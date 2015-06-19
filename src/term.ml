@@ -1165,13 +1165,16 @@ let unnegate t = match T.destruct t with
   (* Top symbol is not a negation, then return unchanged *)
   | _ -> t 
 
+
 (* Convert (= 0 (mod t n)) to (divisble n t) 
 
    Use this function in a Term.map, therefore it considers only the
    top symbol.
    
    TODO: Also accept negative constants as n. *)
-let mod_to_divisible env term = 
+let mod_to_divisible term = 
+
+  let env = [] in
 
   try 
 
@@ -1231,174 +1234,20 @@ let mod_to_divisible env term =
   (* Keep original term if quantifed *)
   with Invalid_argument _ -> term
 
-(*
 
 
-
-
-
-  let rewrite_eq (s, a) = 
-
-    if Symbol.equal_symbols s_eq s then 
-
-      match a with 
-
-        | [l; r] -> 
-
-          if Termis_node 
-
-        | _ -> term
-
-    else
-
-      term
-
-  in
-
-
-  if T.is_node term then 
-    
-    (T.node_symbol_of_t term, T.node_args_of_t term)
-    |> rewrite_eq
-    
-  else
-    
-    term
-  
-
-
-
-
-  let T.node_sym
-
-
-
-
-
-
-
-
-
-
-
-  let mod_to_divisible' t_mod = 
-
-    if 
-      
-      (* Top symbol is mod? *)
-      T.node_symbol_of_t t_mod
-      |> Symbol.equal_symbols Symbol.s_mod 
-
-    then
-      
-      (* Get arguments of mod *)
-      match T.node_args_of_t t_mod with 
-
-        (* Get second argument of mod *)
-        | [_; t_const] ->
-          
-          (* Second argument is constant? *)
-          if T.is_leaf t_const then 
-
-            (* Get symbol of constant *)
-            let s_const = T.leaf_of_t t_const in
-
-            (* Constant is a numeral? *)
-            if Symbol.is_numeral s_const then 
-
-              (* Return (divisible n t) *)
-              mk_divisible (Symbol.numeral_of_symbol n) t
-
-            else
-
-              (* Constant is not a numeral  *)
-              term
-
-          else
-            
-            (* Second argument is not a constant *)
-            term
-              
-        (* mod is a binary operator *)
-        | _ -> assert false
-
-
-    else
-
-      (* Top symbol is not mod *)
-      term
-
-  in
-
-  if 
-
-    (* Top symbol is equality? *)
-    T.node_symbol_of_t term
-    |> Symbol.equal_symbols Symbol.s_eq
-
-  then
-
-    match T.node_args_of_t term with 
-
-      | [l; r] -> 
-
-        (* First argument is constant? *)
-        if T.is_leaf l then 
-          
-          (* Get symbol of constant *)
-          let s_const = T.leaf_of_t t_const in
-          
-          (* Constant is a numeral? *)
-          if Symbol.is_numeral s_const then 
-            
-            
-
-            (* Return (divisible n t) *)
-            mk_divisible (Symbol.numeral_of_symbol n) t
-              
-            else
-        
-
-      (* Equation is not binary *)
-      | _ -> term
-
-  else
-
-    (* Top symbol is not equality *)
-    term
-
-
-  match T.node_of_t term with
-
-    (* Term is (= 0 t) or (= t 0) *)
-    | T.Node (s_eq, [l; r])
-      when 
-        s_eq == Symbol.s_eq && 
-        is_numeral l &&
-        Numeral.(equal (numeral_of_term l) zero) ->
-
-      mod_to_divisible' r
-
-    | T.Node (s_eq, [l; r])
-      when s_eq == Symbol.s_eq && r == (mk_num_of_int 0) ->
-
-      mod_to_divisible' l
-
-    (* Keep other terms unchanged *)
-    | _ -> term
-*)
-
-(*
 (* Convert (divisble n t) to (= 0 (mod t n)) *)
 let divisible_to_mod term = 
 
-  match T.node_of_t term with
+  let env = [] in
+
+  match T.destruct_unsafe env term with
     
     (* Term is a unary function application *)
-    | T.Node (s_divisble, [t]) -> 
+    | T.App (s, [t]) -> 
 
       (* Symbol is a divisibility symbol?  *)
-      (match Symbol.node_of_symbol s_divisble with
+      (match Symbol.node_of_symbol s with
 
         (* Convert to (= (mod t n) 0) *)
         | `DIVISIBLE n -> mk_eq [mk_mod t (mk_num n); mk_num_of_int 0]
@@ -1408,11 +1257,7 @@ let divisible_to_mod term =
 
     (* Keep other terms unchanged *)
     | _ -> term 
-*)
 
-let mod_to_divisible _ = assert false 
-
-let divisible_to_mod _ = assert false 
 
 (* Convert negative numerals and decimals to negative terms *)
 let nums_to_pos_nums term = match T.node_of_t term with 
