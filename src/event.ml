@@ -76,11 +76,12 @@ let reduce_nodes_to_coi trans_sys nodes prop_name =
              let o = Var.offset_of_state_var_instance v in
              let sv = Var.state_var_of_state_var_instance v in
              let sv' = instance_of_state_var sv in
-             Term.mk_var
-               (Var.mk_state_var_instance sv' o)
+             Some
+               (Term.mk_var
+                  (Var.mk_state_var_instance sv' o))
            else 
-             t |> Term.T.safe_of_unsafe
-         | t -> t |> Term.T.safe_of_unsafe)
+             None
+         | t -> None)
       prop 
   in
 

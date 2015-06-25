@@ -120,7 +120,7 @@ let remove_top_level_quantifier removed (t : Term.T.unsafe Term.T.t) =
 
       let t' = Term.T.lambda_of_exists t |> instantiate_lambda in 
       removed := true;
-      t'
+      Some t'
 
     )
 
@@ -130,13 +130,13 @@ let remove_top_level_quantifier removed (t : Term.T.unsafe Term.T.t) =
 
       let t' = Term.T.lambda_of_forall t |> instantiate_lambda in
       removed := true;
-      t'
+      Some t'
 
     )
 
   else 
 
-    t
+    None
 
 
 (* find the smallest encompassing logic of a sort *)
@@ -216,7 +216,7 @@ let logic_of_flat t acc =
 
   | App _ -> sup_logics acc
 
-  
+  | _ -> assert false
 
 (* Returns the logic fragment used by a term *)
 let logic_of_term t =

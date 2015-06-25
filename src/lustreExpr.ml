@@ -243,16 +243,16 @@ let lift_term pos node term =
            
            (* Return state variable instance of the lifted state
               variable at the same offset *)
-           Term.mk_var (Var.mk_state_var_instance state_var' offset)
+           Some (Term.mk_var (Var.mk_state_var_instance state_var' offset))
 
          else
            
            (* No change if free variable is not an instance of a state
               variable *)
-           term |> Term.T.safe_of_unsafe
+           None
              
        (* No change term that are not free variables *)
-       | term -> Term.T.safe_of_unsafe term)
+       | term -> None)
 
     term
 
@@ -533,7 +533,8 @@ and pp_print_term_node safe ppf t = match Term.T.destruct t with
     
     pp_print_term_node safe ppf t
       
-
+  | Term.T.Exists _ | Term.T.Forall _ -> assert false 
+      
 (* Pretty-print the second and following arguments of a
    left-associative function application *)
 and pp_print_app_left' safe s ppf = function 
@@ -2257,7 +2258,9 @@ let stateful_vars_of_expr { expr_step } =
             SVS.empty 
             l)
 
-      | Term.T.Attr _ ->
+      | Term.T.Attr _ 
+      | Term.T.Exists _
+      | Term.T.Forall _ ->
         (function | [s] -> s | _ -> assert false))
     
     expr_step

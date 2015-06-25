@@ -109,6 +109,8 @@ sig
     | Var of var
     | App of symbol * 'a t list
     | Attr of 'a t * attr
+    | Exists of 'a lambda 
+    | Forall of 'a lambda 
 
   val compare : 'a t -> 'a t -> int
 
@@ -182,13 +184,13 @@ sig
 *)
   val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
 
-  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
-
-  val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
-
+  val map : (safe env -> unsafe t -> 'a t option) -> 'b t -> 'b t
+(*
+  val map_top : (safe env -> unsafe flat -> 'a t option) -> 'b t -> 'b t
+*)
   val destruct : safe t -> safe flat
 
-  val destruct_unsafe : 'b list -> 'a t -> 'a flat
+  val destruct_unsafe : 'b env -> 'a t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 
@@ -332,7 +334,9 @@ struct
     | Var of var
     | App of symbol * 'a t list
     | Attr of 'a t * attr
-
+    | Exists of 'a lambda 
+    | Forall of 'a lambda 
+         
 
   (* ************************************************************** *)
   (* Types                                                          *) 
@@ -626,12 +630,12 @@ struct
 
   (* Unsafe constructor for existential quantifier *)
   let ht_exists l = 
-    let n = Exists l in
+    let n : t_node = Exists l in
     Ht.hashcons ht n (prop_of_term_node n)
 
   (* Unsafe constructor for universal quantifier *)
   let ht_forall l = 
-    let n = Forall l in
+    let n : t_node = Forall l in
     Ht.hashcons ht n (prop_of_term_node n)
 
   (* Unsafe constructor for an annotated term *)
@@ -839,6 +843,9 @@ struct
         (pp_symbol ?arity:None) s 
         (pp_print_term_list pp_symbol 0) l
 
+    | Exists _
+    | Forall _ -> assert false 
+        
     | Attr (t, a) -> 
 
       Format.fprintf 
@@ -875,7 +882,7 @@ struct
     | MLet of sort list
     | MExists of sort list
     | MForall of sort list
-    | MAnnot of attr
+    | MAttr of attr
 
   (* Tail-recursive bottom-up right-to-left map on the term
 
@@ -912,118 +919,190 @@ struct
       | h :: t -> push db t ((db, MTree h) :: st)
     in
 
+    (* Ensure bound variables in term do not go outside current
+       environmen t*)
+    let check_res env default = function
+
+      (* Return default on empty result *)
+      | None -> default
+
+      (* Get bound variable indexes from term property *)
+      | Some ({ H.prop = { bound_vars } } as res) ->
+
+        (* Are all bound variables of term in environment? *)
+        if List.fold_left max 0 bound_vars < List.length env then
+
+          (* Accept result *)
+          res
+
+        else
+
+          (* Fail because term is not proper *)
+          raise
+            (Invalid_argument
+               "map: term with invalid bound variables")
+
+    in
+    
     (* Recursive map *)
-    let rec map (f : int -> unsafe t -> unsafe t) accum = function 
+    let rec map (f : safe env -> unsafe t -> 'a t option) accum = function 
 
       (* The stack is empty, we are done. The accumulator contains
          exactly one element, which is a singleton list of the result *)
       | [] -> (match accum with [[n]] -> n | _ -> assert false)
 
-      (* Free variable, bound variable or constant *)
-      | (db, MTree ({ H.node = FreeVar _ } as n)) :: s
-      | (db, MTree ({ H.node = BoundVar _ } as n)) :: s
-      | (db, MTree ({ H.node = App (_, []) } as n)) :: s -> 
+      (* Bound variable *)
+      | (env, MTree ({ H.node = BoundVar _ } as n)) :: s ->
+
+        (* Push bound variable unchanged to the accumulator *)
+        (match accum with 
+          | h :: tl -> map f ((n :: h) :: tl) s
+          | _ -> assert false)
+
+      (* Free variable, or constant *)
+      | (env, MTree ({ H.node = FreeVar _ } as n)) :: s 
+      | (env, MTree ({ H.node = App (_, []) } as n)) :: s -> 
 
         (* Apply the function immediately and push result to the
            accumulator *)
         (match accum with 
-          | h :: tl -> map f ((f db n :: h) :: tl) s
+          | h :: tl -> map f ((check_res env n (f env n) :: h) :: tl) s
           | _ -> assert false)
 
       (* Function application *)
-      | (db, MTree { H.node = App (o, a)}) :: s -> 
+      | (env, MTree { H.node = App (o, a)}) :: s -> 
 
         (* Push symbol and subterms in reverse order to the stack *)
-        map f ([] :: accum) (push db a ((db, MNode o) :: s))
+        map f ([] :: accum) (push env a ((env, MNode o) :: s))
 
       (* Annotated term *)
-      | (db, MTree { H.node = Attr (t, a)}) :: s -> 
+      | (env, MTree { H.node = Attr (t, a)}) :: s -> 
 
         (* Push annotation and terms to the stack *)
-        map f ([] :: accum) ((db, MTree t) :: (db, MAnnot a) :: s)
+        map f ([] :: accum) ((env, MTree t) :: (env, MAttr a) :: s)
 
       (* Let binding *)
-      | (db, MTree { H.node = Let ({ H.node = L (x, t)}, b) }) :: s -> 
+      | (env, MTree { H.node = Let ({ H.node = L (x, t)}, b) }) :: s -> 
 
+        (* Push substitutions for bound variables to environment *)
+        let env' =
+          List.fold_left
+            (fun a t -> Subst (t, env) :: a)
+            env
+            b
+        in
+        
         (* Push bound subterm with incremented index to the stack,
            followed by the assigned terms and a marker for the let
            binding *)
         map 
           f 
           ([] :: accum) 
-          (push db b ((db + (List.length x), MTree t) :: (db, MLet x) :: s)) 
+          (push env b ((env', MTree t) :: (env, MLet x) :: s)) 
 
       (* Existential quantifier *)
-      | (db, MTree ({ H.node = Exists { H.node = L (x, t) } })) :: s -> 
+      | (env, MTree ({ H.node = Exists { H.node = L (x, t) } })) :: s -> 
 
+        (* Push existential quantification for bound variables to
+           environment *)
+        let env' =
+          List.fold_left
+            (fun a _ -> QuantExists :: a)
+            env
+            x
+        in
+        
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
         map 
           f 
           ([] :: accum) 
-          ((db + (List.length x), MTree t) :: (db, MExists x) :: s)
+          ((env', MTree t) :: (env, MExists x) :: s)
 
       (* Universal quantifier *)
-      | (db, MTree ({ H.node = Forall { H.node = L (x, t) } })) :: s -> 
+      | (env, MTree ({ H.node = Forall { H.node = L (x, t) } })) :: s -> 
 
+        (* Push universal quantification for bound variables to
+           environment *)
+        let env' =
+          List.fold_left
+            (fun a _ -> QuantForall :: a)
+            env
+            x
+        in
+        
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
         map 
           f 
           ([] :: accum) 
-          ((db + (List.length x), MTree t) :: (db, MForall x) :: s)
+          ((env', MTree t) :: (env, MForall x) :: s)
 
       (* Function application *)
-      | (db, MNode op) :: s -> 
+      | (env, MNode op) :: s -> 
 
         (* Rebuild function application with mapped subterms *)
         (match accum with 
-          | h :: h' :: d -> map f ((f db (ht_app op h) :: h') :: d) s
+          | h :: h' :: d ->
+
+            let n' = ht_app op h in
+
+            map f ((check_res env n' (f env n') :: h') :: d) s
+              
           | _ -> assert false)
 
       (* Annotation *)
-      | (db, MAnnot a) :: s -> 
+      | (env, MAttr a) :: s -> 
 
         (* Rebuild annotated term with mapped terms *)
         (match accum with 
-          | [h] :: h' :: d -> map f ((f db (ht_attr h a) :: h') :: d) s
+          | [h] :: h' :: d ->
+
+            let n' = ht_attr h a in
+            map f ((check_res env n' (f env n') :: h') :: d) s
           | _ -> assert false)
 
       (* Let binding *)
-      | (db, MLet x) :: s -> 
+      | (env, MLet x) :: s -> 
 
         (* Rebuild let binding with mapped subterms *)
         (match accum with 
 
           | (t :: b) :: h' :: d -> 
-            map f ((f db (ht_let (hl_lambda x t) b) :: h') :: d) s
+            map f ((ht_let (hl_lambda x t) b :: h') :: d) s
 
           | _ -> assert false)
 
-      | (db, MExists x) :: s -> 
+      | (env, MExists x) :: s -> 
 
         (* Rebuild existential quantification with mapped subterm *)
         (match accum with 
 
-          | [t] :: h' :: d -> 
-            map f ((f db (ht_exists (hl_lambda x t)) :: h') :: d) s
+          | [t] :: h' :: d ->
+
+            let n' = ht_exists (hl_lambda x t) in
+            
+            map f ((check_res env n' (f env n') :: h') :: d) s
 
           | _ -> assert false)
 
-      | (db, MForall x) :: s -> 
+      | (env, MForall x) :: s -> 
 
         (* Rebuild universal quantification with mapped subterm *)
         (match accum with 
 
-          | [t] :: h' :: d -> 
-            map f ((f db (ht_forall (hl_lambda x t)) :: h') :: d) s
+          | [t] :: h' :: d ->
+
+            let n' = ht_forall (hl_lambda x t) in
+            
+            map f ((check_res env n' (f env n') :: h') :: d) s
 
           | _ -> assert false)
 
     in
 
     (* Call recursive function with initial parameters *)
-    map f [[]] [(0, MTree term)]
+    map f [[]] [([], MTree term)]
 
       
   (* ********************************************************************* *)
@@ -1071,7 +1150,8 @@ struct
     | Var v -> ht_free_var v
     | App (s, l) -> ht_app s l
     | Attr (t, a) -> ht_attr t a
-
+    | Exists l -> ht_exists l
+    | Forall l -> ht_forall l
 
   (* Folding function for bottom-up right-to-left evaluation of a term;
    substitutions for variables are evaluated lazily and evaluated
@@ -1336,7 +1416,7 @@ struct
   let eval_t f t = 
     fold f [] [[]] [FTree (0, t)]
 
-
+(*
 
   let rec map_top f = 
 
@@ -1387,7 +1467,7 @@ struct
           (* Check substitution and return if changed *)
           | Some t' -> check_t t')
         
-
+*)
 
   let rec import_lambda = function { H.node = L (i, t) } -> 
 
@@ -1415,7 +1495,7 @@ struct
               | Forall l -> Forall (import_lambda l)
               | Attr (t, a) -> Attr (import t, a)
           in
-          Ht.hashcons ht n' (prop_of_term_node n'))
+          Some (Ht.hashcons ht n' (prop_of_term_node n')))
       term
 
   (* Bind free variables in a term and adjust de Bruijn indices *)
@@ -1480,10 +1560,10 @@ struct
 
     map
 
-      (function db -> function 
+      (function env -> function 
 
          (* Free variable may need to be bound *)
-         | { H.node = FreeVar v } as t ->
+         | { H.node = FreeVar v } ->
 
            (try 
 
@@ -1491,13 +1571,13 @@ struct
               let dbt = List.assq v dbm in
 
               (* Replace free variable with bound variable *)
-              ht_bound_var (succ db + dbt)
+              Some (ht_bound_var (succ (List.length env) + dbt))
                 
             (* Variable does not need to be bound *)
-            with Not_found -> t)
+            with Not_found -> None)
 
          (* Only free variables can be bound *)
-         | t -> t)
+         | t -> None)
 
       term
 
@@ -1621,40 +1701,44 @@ struct
 
       map
 
-        (fun o -> function
+        (fun env -> function
 
            (* May need to change the index of a bound variable *)
-           | { H.node = BoundVar i } as t -> 
+           | { H.node = BoundVar i } -> 
 
              (try 
 
+                let o = List.length env in
+                  
                 (* Bound variable is bound outside this let binding? *)
                 if i > o + List.length bvar_terms then
 
                   (* Adjust index with number of eliminated
                      variables *)
-                  ht_bound_var
-                    (i - 
-                     (List.length bvar_terms - 
-                      List.length bound_var_map))
+                  Some
+                    (ht_bound_var
+                       (i - 
+                          (List.length bvar_terms - 
+                             List.length bound_var_map)))
 
                 (* Bound variable is bound in this let binding? *)
                 else if i > o then 
 
                   (* Replace with new index after eliminating
                      variables *)
-                  ht_bound_var
-                    ((List.assoc (i - o) bound_var_map) + o)
+                  Some
+                    (ht_bound_var
+                       ((List.assoc (i - o) bound_var_map) + o))
 
                 (* Keep variables bound inside the term *)
-                else t
+                else None
 
               (* Every variable in the term the is bound outside has a
                  new index *)
               with Not_found -> assert false)
 
            (* Keep terms other than bound variables unchanged *)
-           | t -> t)
+           | t -> None)
 
         term
 
@@ -1790,25 +1874,25 @@ struct
 
 
   (* Return true if the term is an existential quantifier *)
-  let is_exists = function
+  let is_exists : 'a t -> bool = function
     | { H.node = Exists _ } -> true 
     | _ -> false 
 
 
   (* Return the lambda abstraction of an existential quantifier *)
-  let lambda_of_exists = function
+  let lambda_of_exists : 'a t -> 'a lambda = function
     | { H.node = Exists l } -> l
     | _ -> invalid_arg "lambda_of_exists"
 
 
   (* Return true if the term is a universal quantifier *)
-  let is_forall = function
+  let is_forall : 'a t -> bool = function
     | { H.node = Forall _ } -> true 
     | _ -> false 
 
 
   (* Return the lambda abstraction of a universal quantifier *)
-  let lambda_of_forall = function
+  let lambda_of_forall : 'a t -> 'a lambda = function
     | { H.node = Forall l } -> l
     | _ -> invalid_arg "lambda_of_forall"
 
@@ -1836,8 +1920,8 @@ struct
      If the top symbol of a term is a let binding, the binding is
      distributed over the subterms. 
 
-     destruct' always returns a term with BoundVar, Leaf, FreeVar, 
-     Node or Annot at the top *)
+     destruct' always returns a term with BoundVar, FreeVar, App or
+     Attr at the top *)
   let rec destruct' ofs = function
 
     (* Bound variable must not occur free at top level, but may occur
@@ -1938,14 +2022,16 @@ struct
 
     map
 
-      (fun i -> function 
+      (fun env -> function 
       
         (* Fail if index of bound variable greater than number of
            lambda bindings *)
-        | { H.node = BoundVar j } as t -> assert (i >= j); t
+        | { H.node = BoundVar j } ->
+
+          assert (List.length env >= j); None
             
         (* Keep term otherwise *)
-        | t -> t)
+        | t -> None)
 
       t
 

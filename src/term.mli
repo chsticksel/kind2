@@ -406,15 +406,15 @@ val eval_lambda : lambda -> t list -> t
     shifted. Therefore, the function [f] is called with the number of
     let bindings the subterm is under as first argument, so that the
     indexes can be adjusted in the subterm if necessary. *)
-val map : (int -> T.unsafe T.t -> 'a T.t) -> t -> t
+val map : (T.safe T.env -> T.unsafe T.t -> 'a T.t option) -> t -> t
 
 (** Convert [(= 0 (mod t n))] to [(divisble n t)]
 
     The term [n] must be an integer numeral. *)
-val mod_to_divisible : 'a T.t -> 'a T.t
+val mod_to_divisible : 'a T.env -> 'b T.t -> 'b T.t option
 
 (** Convert [(divisble n t)] to [(= 0 (mod t n))] *)
-val divisible_to_mod : 'a T.t -> 'a T.t
+val divisible_to_mod : 'a T.env -> 'b T.t -> 'b T.t option
 
 (** Convert negative numerals and decimals to negations of their
     absolute value *)

@@ -179,7 +179,7 @@ struct
 
     Term.map
       (function _ -> function t -> 
-         try var_term_of_smtexpr' t with Invalid_argument _ -> t |> Term.T.safe_of_unsafe)
+         try Some (var_term_of_smtexpr' t) with Invalid_argument _ -> None)
       term
 
 

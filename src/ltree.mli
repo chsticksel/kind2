@@ -262,7 +262,9 @@ sig
     | Var of var
     | App of symbol * 'a t list
     | Attr of 'a t * attr
-
+    | Exists of 'a lambda
+    | Forall of 'a lambda
+        
   (** {1 Predicates} *)
 
   (** Total order on terms *)
@@ -426,10 +428,11 @@ sig
       shifted. Therefore, the function [f] is called with the number of
       let bindings the subterm is under as first argument, so that the
       indexes can be adjusted in the subterm if necessary. *)
-  val map : (int -> unsafe t -> 'a t) -> 'b t -> 'b t
+  val map : (safe env -> unsafe t -> 'a t option) -> 'b t -> 'b t
 
+(*
   val map_top : (unsafe t -> 'a t option) -> 'b t -> 'b t
-
+*)
 
   (** Return the top symbol of a term along with its subterms
 
@@ -437,7 +440,7 @@ sig
       distributed over the subterms. *)
   val destruct : safe t -> safe flat
 
-  val destruct_unsafe : 'b list -> 'a t -> 'a flat
+  val destruct_unsafe : 'b env -> 'a t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 

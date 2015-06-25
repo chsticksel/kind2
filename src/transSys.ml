@@ -239,19 +239,22 @@ let instantiate_term { callers } term =
       if Term.T.is_free_var term then
 
         try
-          (* Extracting state variable. *)
-          Term.T.free_var_of_t term
-          (* Getting corresponding term, bumping if
-                           necessary. *)
-          |> term_of_var map
+
+          Some
+
+            (* Extracting state variable. *)
+            (Term.T.free_var_of_t term
+                (* Getting corresponding term, bumping if
+                   necessary. *)
+                |> term_of_var map)
 
         with
           (* Variable is not in map, nothing to do. *)
-          Not_found -> term |> Term.T.safe_of_unsafe
+          Not_found -> None
 
       else
         (* Term is not a var, nothing to do. *)
-        term  |> Term.T.safe_of_unsafe )
+        None)
   in
 
   callers

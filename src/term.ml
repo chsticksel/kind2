@@ -605,6 +605,8 @@ let rec type_of_term t = match T.destruct t with
   (* Return type of term *)
   | T.Attr (t, _) -> type_of_term t
 
+  | T.Exists _ | T.Forall _ -> Type.t_bool
+    
 
 (* Type checking disabled
 
@@ -771,7 +773,7 @@ let rec is_atom t = match T.destruct t with
   | T.App (s, l) -> 
 
     (* Must be of Boolean type *)
-    (type_of_term t == Type.mk_bool ()) &&
+    (type_of_term t == Type.t_bool) &&
 
     (* All subterms must be not Boolean *)
     (List.for_all
@@ -807,7 +809,10 @@ let rec is_atom t = match T.destruct t with
                  | _ -> assert false)
 
              (* Annotated term *)
-             | T.Attr (t, _) -> (function _ -> is_atom t))
+             | T.Attr (t, _) -> (function _ -> is_atom t)
+
+             (* TODO: what about quantified terms? *)
+             | T.Exists _ | T.Forall _ -> (function _ -> assert false))
 
            e)
        l)
@@ -818,7 +823,8 @@ let rec is_atom t = match T.destruct t with
   (* Annotated term *)
   | T.Attr (t, _) -> is_atom t
 
-
+  (* TODO: what about quantified terms? *)
+  | T.Exists _ | T.Forall _ -> assert false
 
 (* Return true if the top symbol of the term is a negation *)
 let is_negated term = match T.destruct term with
@@ -1159,9 +1165,7 @@ let unnegate t = match T.destruct t with
    top symbol.
    
    TODO: Also accept negative constants as n. *)
-let mod_to_divisible term = 
-
-  let env = [] in
+let mod_to_divisible env term = 
 
   try 
 
@@ -1211,22 +1215,20 @@ let mod_to_divisible term =
       (function 
         
         (* Return converted term *)
-        | Some term' -> term' 
+        | Some term' -> Some term' 
         
         (* Keep original term *)
-        | None -> term)
+        | None -> None)
 
-    | _ -> term)
+    | _ -> None)
 
   (* Keep original term if quantifed *)
-  with Invalid_argument _ -> term
+  with Invalid_argument _ -> None
 
 
 
 (* Convert (divisble n t) to (= 0 (mod t n)) *)
-let divisible_to_mod term = 
-
-  let env = [] in
+let divisible_to_mod env term = 
 
   match T.destruct_unsafe env term with
     
@@ -1237,13 +1239,13 @@ let divisible_to_mod term =
       (match Symbol.node_of_symbol s with
 
         (* Convert to (= (mod t n) 0) *)
-        | `DIVISIBLE n -> mk_eq [mk_mod t (mk_num n); mk_num_of_int 0]
+        | `DIVISIBLE n -> Some (mk_eq [mk_mod t (mk_num n); mk_num_of_int 0])
 
         (* Keep other terms unchanged *)
-        | _ -> term)
+        | _ -> None)
 
     (* Keep other terms unchanged *)
-    | _ -> term 
+    | _ -> None
 
 
 (* Convert negative numerals and decimals to negative terms *)
@@ -1275,10 +1277,11 @@ let bump_state i term =
   T.map
     (function _ -> function 
        | t when T.is_free_var t -> 
-         mk_var 
-           (let v = T.free_var_of_t t in
-            Var.bump_offset_of_state_var_instance i v)
-       | _ as t -> t)
+         Some
+           (mk_var 
+              (let v = T.free_var_of_t t in
+               Var.bump_offset_of_state_var_instance i v))
+       | _ -> None)
     term
 
 
@@ -1313,7 +1316,9 @@ let state_vars_of_term term  =
         List.fold_left 
           StateVar.StateVarSet.union 
           StateVar.StateVarSet.empty
-      | T.Attr (t, _) -> 
+      | T.Attr _ 
+      | T.Exists _
+      | T.Forall _ ->
         (function [s] -> s | _ -> assert false))
     term
 
@@ -1328,7 +1333,9 @@ let vars_of_term term =
         | T.Var v -> 
           (function [] -> Var.VarSet.singleton v | _ -> assert false)
         | T.App _ -> List.fold_left Var.VarSet.union Var.VarSet.empty
-        | T.Attr (t, _) -> 
+        | T.Attr _
+        | T.Exists _
+        | T.Forall _ -> 
           (function [s] -> s | _ -> assert false))
       term
   in
@@ -1355,7 +1362,9 @@ let state_vars_at_offset_of_term i term =
       | T.Var _ 
       | T.App _ -> 
         List.fold_left StateVar.StateVarSet.union StateVar.StateVarSet.empty
-      | T.Attr (t, _) -> 
+      | T.Attr _
+      | T.Exists _
+      | T.Forall _ -> 
         (function [s] -> s | _ -> assert false))
     term
 
@@ -1376,7 +1385,9 @@ let vars_at_offset_of_term i term =
       | T.Var _ 
       | T.App _ -> 
         List.fold_left Var.VarSet.union Var.VarSet.empty
-      | T.Attr (t, _) -> 
+      | T.Attr _
+      | T.Exists _
+      | T.Forall _ -> 
         (function [s] -> s | _ -> assert false))
     term
 
@@ -1417,7 +1428,9 @@ let rec var_offsets_of_term expr =
       | T.App _ -> 
         (function l -> List.fold_left min_max_none (None, None) l)
 
-      | T.Attr _ -> (function [v] -> v | _ -> assert false))
+      | T.Attr _
+      | T.Exists _
+      | T.Forall _ -> (function [v] -> v | _ -> assert false))
     expr
 
 

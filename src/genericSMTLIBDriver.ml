@@ -356,7 +356,7 @@ let gen_expr_of_string_sexpr'
         in
 
         (* Convert (= 0 (mod t n)) to (t divisible n) *)
-        Term.mod_to_divisible t
+        Term.map Term.mod_to_divisible t
 
       )
 

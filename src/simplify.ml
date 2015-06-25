@@ -766,6 +766,7 @@ let rec negate_nnf term = match Term.destruct term with
 
   | Term.T.Attr (t, _) -> t
 
+  | Term.T.Exists _ | Term.T.Forall _ -> assert false 
 
 (* Negate all but the last term *)
 let implies_to_or args = 
@@ -1910,8 +1911,10 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
       )
 
     (* Skip over attributed term *)
-    | Term.T.Attr _ -> match args with [a] -> a | _ -> assert false
+    | Term.T.Attr _ -> (match args with [a] -> a | _ -> assert false)
 
+    | Term.T.Exists _ | Term.T.Forall _ -> assert false
+      
 
 (* ********************************************************************** *)
 (* Top-level functions                                                    *)
