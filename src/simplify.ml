@@ -659,7 +659,7 @@ let rec negate_nnf term = match Term.destruct term with
   | Term.T.Var v -> Term.mk_not (Term.mk_var v)
 
   (* Negate a constant *)
-  | Term.T.Const s ->
+  | Term.T.App (s, []) ->
 
     (* Unhashcons constant symbol *)
     (match Symbol.node_of_symbol s with 
@@ -1092,7 +1092,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
       )
                    
     (* Polynomial of a constant depends on symbol *)
-    | Term.T.Const s -> 
+    | Term.T.App (s, []) -> 
       
       (
         

@@ -329,7 +329,6 @@ let to_presburger (v: Var.t list) (gf: Term.t) : cformula =
      	   | Term.T.Var var ->
              Poly [(Numeral.one, Some var)]
 
-           | Term.T.Const sym
            | Term.T.App (sym, _) ->
              (match Symbol.node_of_symbol sym, args with
                (* true becomes 1 > 0 *)

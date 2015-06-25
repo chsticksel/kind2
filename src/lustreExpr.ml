@@ -521,7 +521,7 @@ and pp_print_term_node safe ppf t = match Term.T.destruct t with
       
   | Term.T.Var var -> invalid_arg "pp_print_term"
 
-  | Term.T.Const s -> 
+  | Term.T.App (s, []) -> 
     
     pp_print_symbol ppf (Symbol.node_of_symbol s)
       
@@ -1234,10 +1234,10 @@ let mk_not expr = mk_unary eval_not type_of_not expr
 *)
 let eval_uminus expr = match Term.destruct expr with 
 
-  | Term.T.Const s when Symbol.is_numeral s -> 
+  | Term.T.App (s, []) when Symbol.is_numeral s -> 
     Term.mk_num Numeral.(- Symbol.numeral_of_symbol s)
 
-  | Term.T.Const s when Symbol.is_decimal s -> 
+  | Term.T.App (s, []) when Symbol.is_decimal s -> 
     Term.mk_dec Decimal.(- Symbol.decimal_of_symbol s)
 
   | Term.T.App (s, [e]) when s == Symbol.s_minus -> e
@@ -1269,7 +1269,7 @@ let mk_uminus expr = mk_unary eval_uminus type_of_uminus expr
 
 (* Evaluate conversion to integer *)
 let eval_to_int expr = match Term.destruct expr with 
-  | Term.T.Const s when Symbol.is_decimal s -> 
+  | Term.T.App (s, []) when Symbol.is_decimal s -> 
     Term.mk_num
       (Numeral.of_big_int
          (Decimal.to_big_int
@@ -1296,7 +1296,7 @@ let mk_to_int expr = mk_unary eval_to_int type_of_to_int expr
 
 (* Evaluate conversion to real *)
 let eval_to_real expr = match Term.destruct expr with 
-  | Term.T.Const s when Symbol.is_numeral s -> 
+  | Term.T.App (s, []) when Symbol.is_numeral s -> 
     Term.mk_dec
       (Decimal.of_big_int
          (Numeral.to_big_int
@@ -1441,7 +1441,7 @@ let eval_mod expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && Symbol.is_numeral c2 -> 
 
       Term.mk_num 
@@ -1480,14 +1480,14 @@ let eval_minus expr1 expr2 =
   
   match Term.destruct expr1, Term.destruct expr2 with
     
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && Symbol.is_numeral c2 -> 
       
       Term.mk_num 
         Numeral.(Symbol.numeral_of_symbol c1 -
                  Symbol.numeral_of_symbol c2) 
         
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && Symbol.is_decimal c2 -> 
       
       Term.mk_dec
@@ -1530,14 +1530,14 @@ let eval_plus expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && Symbol.is_numeral c2 -> 
 
       Term.mk_num 
         Numeral.(Symbol.numeral_of_symbol c1 +
                  Symbol.numeral_of_symbol c2) 
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && Symbol.is_decimal c2 -> 
 
       Term.mk_dec
@@ -1577,7 +1577,7 @@ let eval_div expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && Symbol.is_decimal c2 -> 
 
       Term.mk_dec
@@ -1605,14 +1605,14 @@ let eval_times expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && Symbol.is_numeral c2 -> 
 
       Term.mk_num 
         Numeral.(Symbol.numeral_of_symbol c1 *
                  Symbol.numeral_of_symbol c2) 
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && Symbol.is_decimal c2 -> 
 
       Term.mk_dec
@@ -1641,7 +1641,7 @@ let eval_intdiv expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && Symbol.is_numeral c2 -> 
 
       Term.mk_num
@@ -1686,7 +1686,7 @@ let eval_eq expr1 expr2 = match expr1, expr2 with
 
     match Term.destruct expr1, Term.destruct expr2 with
       
-      | Term.T.Const c1, Term.T.Const c2 when
+      | Term.T.App (c1, []), Term.T.App (c2, []) when
           Symbol.is_numeral c1 && 
           Symbol.is_numeral c2 -> 
     
@@ -1699,7 +1699,7 @@ let eval_eq expr1 expr2 = match expr1, expr2 with
 
           Term.t_false
 
-      | Term.T.Const c1, Term.T.Const c2 when
+      | Term.T.App (c1, []), Term.T.App (c2, []) when
           Symbol.is_decimal c1 && 
           Symbol.is_decimal c2 -> 
     
@@ -1749,7 +1749,7 @@ let eval_lte expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && 
         Symbol.is_numeral c2 -> 
 
@@ -1762,7 +1762,7 @@ let eval_lte expr1 expr2 =
 
         Term.t_false
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && 
         Symbol.is_decimal c2 -> 
 
@@ -1798,7 +1798,7 @@ let eval_lt expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && 
         Symbol.is_numeral c2 -> 
 
@@ -1811,7 +1811,7 @@ let eval_lt expr1 expr2 =
 
         Term.t_false
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && 
         Symbol.is_decimal c2 -> 
 
@@ -1847,7 +1847,7 @@ let eval_gte expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && 
         Symbol.is_numeral c2 -> 
 
@@ -1860,7 +1860,7 @@ let eval_gte expr1 expr2 =
 
         Term.t_false
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && 
         Symbol.is_decimal c2 -> 
 
@@ -1896,7 +1896,7 @@ let eval_gt expr1 expr2 =
 
   match Term.destruct expr1, Term.destruct expr2 with
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_numeral c1 && 
         Symbol.is_numeral c2 -> 
 
@@ -1909,7 +1909,7 @@ let eval_gt expr1 expr2 =
 
         Term.t_false
 
-    | Term.T.Const c1, Term.T.Const c2 when
+    | Term.T.App (c1, []), Term.T.App (c2, []) when
         Symbol.is_decimal c1 && 
         Symbol.is_decimal c2 -> 
 
@@ -2063,7 +2063,7 @@ let mk_pre
         (Term.T.is_free_var t && 
          Term.T.free_var_of_t t |> Var.is_const_state_var) ||
         (match Term.destruct t with 
-          | Term.T.Const c1 when 
+          | Term.T.App (c1, []) when 
               Symbol.is_numeral c1 || Symbol.is_decimal c1 -> true
           | _ -> false) -> (expr_init, new_vars)
 
@@ -2243,7 +2243,7 @@ let stateful_vars_of_expr { expr_step } =
           | _ -> assert false)
 
       | Term.T.Var _
-      | Term.T.Const _ -> 
+      | Term.T.App (_, []) -> 
 
         (function 
           | [] -> SVS.empty

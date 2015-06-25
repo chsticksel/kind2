@@ -120,10 +120,10 @@ let destruct = T.destruct
 let is_named t =  
 
   (* Term is annotated? *)
-  if T.is_annot t then
+  if T.is_attr t then
 
     (* Return true if annotation is a name *)
-    T.annot_of_t t |> TermAttr.is_named 
+    T.attr_of_t t |> TermAttr.is_named 
 
   else
 
@@ -135,16 +135,16 @@ let is_named t =
 let term_of_named t =
 
   (* Term is annotated? *)
-  if T.is_annot t then
+  if T.is_attr t then
 
     (* Get annotation of term *)
-    let a = T.annot_of_t t in
+    let a = T.attr_of_t t in
     
     (* Annotation is a name? *)
     if TermAttr.is_named a then
       
       (* Return term in annotation *)
-      T.annot_t_of_t t
+      T.attr_t_of_t t
 
     else
       
@@ -161,10 +161,10 @@ let term_of_named t =
 let name_of_named t =
 
   (* Term is annotated? *)
-  if T.is_annot t then
+  if T.is_attr t then
 
     (* Get annotation of term *)
-    let a = T.annot_of_t t in
+    let a = T.attr_of_t t in
     
     (* Annotation is a name? *)
     if TermAttr.is_named a then
@@ -191,10 +191,10 @@ let name_of_named t =
 let rec is_numeral t = match destruct t with 
 
   (* Term is a numeral constant *)
-  | T.Const s when Symbol.is_numeral s -> true
+  | T.App (s, []) when Symbol.is_numeral s -> true
 
   (* Term is a decimal constant coinciding with an integer *)
-  | T.Const s when 
+  | T.App (s, []) when 
       Symbol.is_decimal s && Decimal.is_int (Symbol.decimal_of_symbol s) -> 
 
     true
@@ -209,10 +209,10 @@ let rec is_numeral t = match destruct t with
 let rec numeral_of_term t = match destruct t with 
 
   (* Term is a numeral constant *)
-  | T.Const s when Symbol.is_numeral s -> Symbol.numeral_of_symbol s
+  | T.App (s, []) when Symbol.is_numeral s -> Symbol.numeral_of_symbol s
 
   (* Term is a decimal constant coinciding with an integer *)
-  | T.Const s when 
+  | T.App (s, []) when 
       Symbol.is_decimal s && Decimal.is_int (Symbol.decimal_of_symbol s) -> 
 
     Numeral.of_big_int (Decimal.to_big_int (Symbol.decimal_of_symbol s))
@@ -229,7 +229,7 @@ let rec numeral_of_term t = match destruct t with
 let rec decimal_of_term t = match destruct t with 
 
   (* Term is a decimal constant *)
-  | T.Const s when Symbol.is_decimal s -> Symbol.decimal_of_symbol s
+  | T.App (s, []) when Symbol.is_decimal s -> Symbol.decimal_of_symbol s
 
   (* Term is a negated decimal constant *)
   | T.App (s, [a]) when s == Symbol.s_minus && is_decimal a -> 
@@ -260,7 +260,7 @@ let rec decimal_of_term t = match destruct t with
 and is_decimal t = match destruct t with 
 
   (* Term is a decimal constant *)
-  | T.Const s when Symbol.is_decimal s -> true
+  | T.App (s, []) when Symbol.is_decimal s -> true
 
   (* Term is a negated decimal constant *)
   | T.App (s, [a]) when s == Symbol.s_minus && is_decimal a -> true
@@ -280,7 +280,7 @@ and is_decimal t = match destruct t with
 let rec is_bool t = match destruct t with 
 
   (* Term is a Boolean constant *)
-  | T.Const s when Symbol.is_bool s -> true
+  | T.App (s, []) when Symbol.is_bool s -> true
 
   (* Term is a negated Boolean constant *)
   | T.App (s, [a]) when s == Symbol.s_not && is_bool a -> true
@@ -292,7 +292,7 @@ let rec is_bool t = match destruct t with
 let rec bool_of_term t = match destruct t with 
 
   (* Term is a Boolean constant *)
-  | T.Const s when Symbol.is_bool s -> Symbol.bool_of_symbol s
+  | T.App (s, []) when Symbol.is_bool s -> Symbol.bool_of_symbol s
 
   (* Term is a negated numeral constant *)
   | T.App (s, [a]) when s == Symbol.s_not && is_bool a -> 
@@ -305,7 +305,7 @@ let rec bool_of_term t = match destruct t with
 let is_select t = match node_of_term t with
 
   (* Top symbol is a select operator *)
-  | T.Node (s, [a; i]) -> s == Symbol.s_select
+  | T.App (s, [a; i]) -> s == Symbol.s_select
                                  
   | _ -> false
 
@@ -439,7 +439,7 @@ let rec type_of_term t = match T.destruct t with
   | T.Var v -> Var.type_of_var v
 
   (* Return type of a constant *)
-  | T.Const s -> 
+  | T.App (s, []) -> 
 
     (
 
@@ -798,16 +798,6 @@ let rec is_atom t = match T.destruct t with
                  (* All subterms must be atoms *)
                  (List.fold_left (fun a e -> a && e) true r))
 
-             (* Constant must not be of Boolean type *)
-             | T.Const _ as f -> 
-
-               (function 
-                 | [] -> 
-                   (not 
-                      (type_of_term (T.construct f) == 
-                         Type.mk_bool ()))
-                 | _ -> assert false)
-
              (* Variable must not be of Boolean type *)
              | T.Var v -> 
 
@@ -821,9 +811,6 @@ let rec is_atom t = match T.destruct t with
 
            e)
        l)
-
-  (* A constant is a Boolean atom if it is of Boolean type *)
-  | T.Const _ -> type_of_term t == Type.mk_bool ()
 
   (* A variable is a Boolean atom if it is of Boolean type *)
   | T.Var v -> Var.type_of_var v == Type.mk_bool ()
@@ -1071,7 +1058,7 @@ let mk_named t =
   (* Return name and named term
 
      Order pair in this way to put it an association list *)
-  (n, T.mk_annot t (TermAttr.mk_named "t" n))
+  (n, T.mk_attr t (TermAttr.mk_named "t" n))
 
 
 (* Hashcons a named term *)
@@ -1081,7 +1068,7 @@ let mk_named_unsafe t s n =
   if s = "t" then raise (Invalid_argument "mk_named_unsafe") else
     
     (* Return named term *)
-    T.mk_annot t (TermAttr.mk_named s n)
+    T.mk_attr t (TermAttr.mk_named s n)
 
 
 (* Hashcons an uninterpreted function or constant *)
@@ -1126,7 +1113,7 @@ let negate t = match T.destruct t with
    false, or an arithmetic inequality. *)
 let negate_simplify t = match T.destruct t with
 
-  | T.Const symb ->
+  | T.App (symb, []) ->
      ( match Symbol.node_of_symbol symb with
 
        (* Bool constants. *)
@@ -1181,7 +1168,7 @@ let mod_to_divisible term =
   let mod_to_divisible' l r = 
     match T.destruct_unsafe env l, T.destruct_unsafe env r with 
       
-      | T.Const c, T.App (s, [t; n]) 
+      | T.App (c,[]), T.App (s, [t; n]) 
         when 
           Symbol.is_numeral c &&  
           Symbol.numeral_of_symbol c |> Numeral.(equal zero) &&
@@ -1189,7 +1176,7 @@ let mod_to_divisible term =
         
         (match T.destruct_unsafe env n with 
           
-          | T.Const d when Symbol.is_numeral d ->
+          | T.App (d, []) when Symbol.is_numeral d ->
             
             (* Return (divisible n t) *)
             Some (mk_divisible (Symbol.numeral_of_symbol d) t)
@@ -1262,7 +1249,7 @@ let divisible_to_mod term =
 (* Convert negative numerals and decimals to negative terms *)
 let nums_to_pos_nums term = match T.node_of_t term with 
 
-  | T.Leaf s -> 
+  | T.App (s, []) -> 
 
     (match Symbol.node_of_symbol s with 
 
@@ -1322,8 +1309,6 @@ let state_vars_of_term term  =
             StateVar.StateVarSet.singleton 
               (Var.state_var_of_state_var_instance v)
           | _ -> assert false)
-      | T.Const _ -> 
-        (function [] -> StateVar.StateVarSet.empty | _ -> assert false)
       | T.App _ -> 
         List.fold_left 
           StateVar.StateVarSet.union 
@@ -1342,8 +1327,6 @@ let vars_of_term term =
       (function 
         | T.Var v -> 
           (function [] -> Var.VarSet.singleton v | _ -> assert false)
-        | T.Const _ -> 
-          (function [] -> Var.VarSet.empty | _ -> assert false)
         | T.App _ -> List.fold_left Var.VarSet.union Var.VarSet.empty
         | T.Attr (t, _) -> 
           (function [s] -> s | _ -> assert false))
@@ -1370,8 +1353,6 @@ let state_vars_at_offset_of_term i term =
               (Var.state_var_of_state_var_instance v)
           | _ -> assert false)
       | T.Var _ 
-      | T.Const _ -> 
-        (function [] -> StateVar.StateVarSet.empty | _ -> assert false)
       | T.App _ -> 
         List.fold_left StateVar.StateVarSet.union StateVar.StateVarSet.empty
       | T.Attr (t, _) -> 
@@ -1393,8 +1374,6 @@ let vars_at_offset_of_term i term =
           | [] -> Var.VarSet.singleton v
           | _ -> assert false)
       | T.Var _ 
-      | T.Const _ -> 
-        (function [] -> Var.VarSet.empty | _ -> assert false)
       | T.App _ -> 
         List.fold_left Var.VarSet.union Var.VarSet.empty
       | T.Attr (t, _) -> 
@@ -1432,7 +1411,6 @@ let rec var_offsets_of_term expr =
             (Some o, Some o)
           | _ -> assert false)
 
-      | T.Const _
       | T.Var _ -> 
         (function [] -> (None, None) | _ -> assert false)
 

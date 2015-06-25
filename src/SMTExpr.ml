@@ -119,7 +119,7 @@ struct
 
         (* An unrolled variable is a constant term if it is not an
            array. *)
-        | Term.T.Const sym -> (
+        | Term.T.App (sym, []) -> (
 
             try
 

@@ -38,6 +38,7 @@
 
 (** {1 Types and hash-consing} *)
 
+(** Instance of the underlying term module {!Ltree} *)
 module T : Ltree.S
   with type symbol = Symbol.t
   and type var = Var.t

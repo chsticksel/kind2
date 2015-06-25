@@ -34,13 +34,13 @@ module Pruning = struct
     (* Returns true if [negated] is an or containing the complement
        of [lhs]. Used if [rhs] is a not. *)
     let negated_and negated =
-      if Term.T.is_node negated
+      if Term.T.is_app negated
       then
       
-        if Term.T.node_symbol_of_t negated == Symbol.s_and
+        if Term.T.app_symbol_of_t negated == Symbol.s_and
         then
           (* Term is an and. *)
-          Term.T.node_args_of_t negated
+          Term.T.app_args_of_t negated
           |> List.mem (Term.negate lhs)
 
         else false
@@ -48,19 +48,19 @@ module Pruning = struct
     in
   
     (* Is rhs an application? *)
-    if Term.T.is_node rhs
+    if Term.T.is_app rhs
     then
 
-      ( if Term.T.node_symbol_of_t rhs == Symbol.s_or
+      ( if Term.T.app_symbol_of_t rhs == Symbol.s_or
         then
           (* Rhs is an or. *)
-          Term.T.node_args_of_t rhs |> List.mem lhs
+          Term.T.app_args_of_t rhs |> List.mem lhs
 
-        else if Term.T.node_symbol_of_t rhs == Symbol.s_not
+        else if Term.T.app_symbol_of_t rhs == Symbol.s_not
         then
           (* Rhs is a not, need to check if there is an and
              below. *)
-          ( match Term.T.node_args_of_t rhs with
+          ( match Term.T.app_args_of_t rhs with
 
             (* Well founded not. *)
             | [ negated ] -> negated_and negated
@@ -79,13 +79,13 @@ module Pruning = struct
     (* Returns true if [negated] is an and containing the complement
        of [rhs]. Used if [lhs] is a not. *)
     let negated_or negated =
-      if Term.T.is_node negated
+      if Term.T.is_app negated
       then
 
-        if Term.T.node_symbol_of_t negated == Symbol.s_or
+        if Term.T.app_symbol_of_t negated == Symbol.s_or
         then
           (* Term is an or. *)
-          Term.T.node_args_of_t negated
+          Term.T.app_args_of_t negated
           |> List.mem (Term.negate rhs)
 
         else false
@@ -93,19 +93,19 @@ module Pruning = struct
     in
 
     (* Is rhs an application? *)
-    if Term.T.is_node lhs
+    if Term.T.is_app lhs
     then
 
-      ( if Term.T.node_symbol_of_t lhs == Symbol.s_and
+      ( if Term.T.app_symbol_of_t lhs == Symbol.s_and
         then
           (* Lhs is an and. *)
-          Term.T.node_args_of_t lhs |> List.mem rhs
+          Term.T.app_args_of_t lhs |> List.mem rhs
 
 
-        else if Term.T.node_symbol_of_t lhs == Symbol.s_not
+        else if Term.T.app_symbol_of_t lhs == Symbol.s_not
         then
           (* Lhs is a not, need to check if there is an or below. *)
-          ( match Term.T.node_args_of_t lhs with
+          ( match Term.T.app_args_of_t lhs with
 
             (* Well founded not. *)
             | [ negated ] -> negated_or negated
@@ -147,18 +147,18 @@ module Pruning = struct
     in
 
     (* Are lhs and rhs applications? *)
-    if (Term.T.is_node lhs) && (Term.T.is_node rhs)
+    if (Term.T.is_app lhs) && (Term.T.is_app rhs)
     then
 
       (* Are rhs and lhs similar applications? *)
       if
-        (Term.T.node_symbol_of_t lhs)
-        == (Term.T.node_symbol_of_t rhs)
+        (Term.T.app_symbol_of_t lhs)
+        == (Term.T.app_symbol_of_t rhs)
       then (
 
         match
-          (Term.T.node_args_of_t lhs),
-          (Term.T.node_args_of_t rhs)
+          (Term.T.app_args_of_t lhs),
+          (Term.T.app_args_of_t rhs)
         with
 
           | [kid1 ; kid2], [kid1' ; kid2'] ->
@@ -170,7 +170,7 @@ module Pruning = struct
                kid1]. Otherwise return false. *)
             let compare symbol operator =
 
-              if (Term.T.node_symbol_of_t lhs) == symbol
+              if (Term.T.app_symbol_of_t lhs) == symbol
               then
 
                 ( if
@@ -235,9 +235,9 @@ module Pruning = struct
  
   
   let structural_criterion term =
-    if Term.T.node_symbol_of_t term == Symbol.s_implies then
+    if Term.T.app_symbol_of_t term == Symbol.s_implies then
         (* Term is indeed an implication. *)
-        ( match Term.T.node_args_of_t term with
+        ( match Term.T.app_args_of_t term with
 
           (* Term is a well founded implication. *)
           | [ lhs ; rhs ] ->

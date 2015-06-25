@@ -186,7 +186,7 @@ let logic_of_flat t acc =
   
   | Var v -> Var.type_of_var v |> logic_of_sort |> union @@ sup_logics acc
 
-  | Const s | App (s, []) ->
+  | App (s, []) ->
     if Symbol.is_uf s then
       Symbol.uf_of_symbol s
       |> UfSymbol.res_type_of_uf_symbol

@@ -91,12 +91,11 @@ sig
   and t_node = private
     | FreeVar of var
     | BoundVar of int
-    | Leaf of symbol
-    | Node of symbol * t_t list
+    | App of symbol * t_t list
     | Let of lambda_t * t_t list
     | Exists of lambda_t
     | Forall of lambda_t
-    | Annot of t_t * attr
+    | Attr of t_t * attr
 
   and t_t = private (t_node, t_prop) H.hash_consed
 
@@ -108,7 +107,6 @@ sig
 
   type 'a flat = private
     | Var of var
-    | Const of symbol
     | App of symbol * 'a t list
     | Attr of 'a t * attr
 
@@ -138,7 +136,7 @@ sig
 
   val mk_forall : var list -> 'a t -> 'a t
 
-  val mk_annot : 'a t -> attr -> 'a t
+  val mk_attr : 'a t -> attr -> 'a t
 
   val is_free_var : 'a t -> bool
 
@@ -150,11 +148,11 @@ sig
 
   val leaf_of_t : 'a t -> symbol
 
-  val is_node : 'a t -> bool
+  val is_app : 'a t -> bool
 
-  val node_symbol_of_t : 'a t -> symbol
+  val app_symbol_of_t : 'a t -> symbol
 
-  val node_args_of_t : 'a t -> 'a t list
+  val app_args_of_t : 'a t -> 'a t list
 
   val is_let : 'a t -> bool
 
@@ -166,11 +164,11 @@ sig
 
   val lambda_of_forall : 'a t -> 'a lambda
 
-  val is_annot : 'a t -> bool
+  val is_attr : 'a t -> bool
 
-  val annot_t_of_t : 'a t -> 'a t
+  val attr_t_of_t : 'a t -> 'a t
 
-  val annot_of_t : 'a t -> attr
+  val attr_of_t : 'a t -> attr
 
   val node_of_t : 'a t -> t_node
 
@@ -278,21 +276,12 @@ struct
     (* Free variable *)
     | FreeVar of var
 
-    (* Bound variable with its de Bruijn index 
-
-       We use de Bruijn indexes in reverse. The variable with index i
-       is bound to the i-th lambda abstraction:
-
-       \x. \y. (+ x y) 
-
-       x's index is 2, y's index is 1. *)
+    (* Bound variable with its de Bruijn index *)
     | BoundVar of int
 
-    (* Constant, i.e. a nullary symbol *)
-    | Leaf of symbol
-
-    (* Function application, the list must not be empty *)
-    | Node of symbol * t_t list
+    (* Function application, the list may be empty to denote a
+       constant *)
+    | App of symbol * t_t list
 
     (* Let binding *)
     | Let of lambda_t * t_t list
@@ -304,7 +293,7 @@ struct
     | Forall of lambda_t
 
     (* Annotated term *)
-    | Annot of t_t * attr
+    | Attr of t_t * attr
 
   (* Property of a term node *)
   and t_prop = 
@@ -341,7 +330,6 @@ struct
   (* Flattened term without binders at the top symbol *)
   type 'a flat = 
     | Var of var
-    | Const of symbol
     | App of symbol * 'a t list
     | Attr of 'a t * attr
 
@@ -416,13 +404,10 @@ struct
       (* Equality bound variables: integer de Bruijn indexes are equal *)
       | BoundVar v1, BoundVar v2 -> v1 = v2 
 
-      (* Physical equality on leaves *)
-      | Leaf s1, Leaf s2 -> s1 == s2
-
       (* Equality of nodes: symbols are physically equal, number of
          subterms is equal and respective subterms are physically
          equal *)
-      | Node (s1, a1), Node (s2, a2) -> 
+      | App (s1, a1), App (s2, a2) -> 
         (s1 == s2) &&
         (List.length a1 = List.length a2) &&
         (List.for_all2 (==) a1 a2)
@@ -447,17 +432,16 @@ struct
 
       (* Equality of annotated terms: terms are physically equal and
          annotations are physically equal *)
-      | Annot (t1, a1), Annot (t2, a2) -> t1 == t2 && a1 == a2
+      | Attr (t1, a1), Attr (t2, a2) -> t1 == t2 && a1 == a2
 
       (* Terms of different kinds are not equal *)
       | FreeVar _, _
       | BoundVar _, _
-      | Leaf _, _
-      | Node _, _
+      | App _, _
       | Let _, _
       | Exists _, _
       | Forall _, _
-      | Annot _, _ -> false
+      | Attr _, _ -> false
 
     (* Hash of a term: interleave hash values of kinds *)
     let hash = function 
@@ -468,23 +452,21 @@ struct
 
         safe_hash_interleave
           (T.hash_of_var v)
-          8 0
+          8
+          0
 
       (* Hash of bound variable is the de Bruijn index *)
       | BoundVar i -> safe_hash_interleave i 8 1
 
-      (* Hash of symbol: delegate to hash function of symbol *)
-      | Leaf s -> safe_hash_interleave (T.hash_of_symbol s) 8 2
-
       (* Hash of a node: hash a list of hashes of symbol and arguments *)
-      | Node (s, l) -> 
+      | App (s, l) -> 
 
         safe_hash_interleave
           (Hashtbl.hash 
              ((T.hash_of_symbol s) :: 
                 (List.map (function { H.hkey = h } -> h) l)))
           8
-          3
+          2
 
       (* Hash of a let binding: hash a list of hashes of lambda
          abstraction and bound terms *)
@@ -494,16 +476,16 @@ struct
           (Hashtbl.hash 
              (hl :: (List.map (function { H.hkey = h } -> h) l)))
           8
-          4
+          3
 
       (* Hash of quantifiers: hash of lambda abstraction *)
-      | Exists { H.hkey = hl } -> safe_hash_interleave hl 8 5 
-      | Forall { H.hkey = hl } -> safe_hash_interleave hl 8 6
+      | Exists { H.hkey = hl } -> safe_hash_interleave hl 8 4
+      | Forall { H.hkey = hl } -> safe_hash_interleave hl 8 5
 
       (* Hash of attribute: delegate *)
-      | Annot ( { H.hkey = ht }, a) -> 
+      | Attr ( { H.hkey = ht }, a) -> 
 
-        safe_hash_interleave (Hashtbl.hash [T.hash_of_attr a; ht]) 8 7
+        safe_hash_interleave (Hashtbl.hash [T.hash_of_attr a; ht]) 8 6
 
   end
 
@@ -571,14 +553,14 @@ struct
 
     (* Free variable or constant do not have bound variables *)
     | FreeVar _ 
-    | Leaf _  -> []
+    | App (_, [])  -> []
 
     (* Bound variable is the only bound variables *)
     | BoundVar i -> [i]
 
     (* Bound variables in a function application are the bound
        variables in subterms *)
-    | Node (_, l) -> bound_vars_of_terms IntegerSet.empty l
+    | App (_, l) -> bound_vars_of_terms IntegerSet.empty l
 
     (* Bound variables in let bindings are bound variables in term and
        bound variables in substituted terms *)
@@ -598,7 +580,7 @@ struct
       bound_vars_outside_lambda (List.length i) bound_vars
 
     (* Bound variables in annotated term are bound variables in term *)
-    | Annot ({ H.prop = { bound_vars } }, _) -> bound_vars
+    | Attr ({ H.prop = { bound_vars } }, _) -> bound_vars
 
 
   (* Initilize property of term *)
@@ -632,14 +614,9 @@ struct
     let n = BoundVar i in
     Ht.hashcons ht n (prop_of_term_node n)
 
-  (* Unsafe constructor for leaf *)
-  let ht_leaf s = 
-    let n = Leaf s in
-    Ht.hashcons ht n (prop_of_term_node n)
-
-  (* Unsafe constructor for node *)
-  let ht_node s l = 
-    let n = Node (s, l) in
+  (* Unsafe constructor for function application *)
+  let ht_app s l = 
+    let n : t_node = App (s, l) in
     Ht.hashcons ht n (prop_of_term_node n)
 
   (* Unsafe constructor for let binding *)
@@ -658,8 +635,8 @@ struct
     Ht.hashcons ht n (prop_of_term_node n)
 
   (* Unsafe constructor for an annotated term *)
-  let ht_annot t a = 
-    let n = Annot (t, a) in
+  let ht_attr t a = 
+    let n : t_node = Attr (t, a) in
     Ht.hashcons ht n (prop_of_term_node n)
 
 
@@ -760,10 +737,10 @@ struct
     | { H.node = BoundVar dbv } -> Format.fprintf ppf "X%i" (db - dbv + 1)
 
     (* Delegate printing of leaf to function in input module *)
-    | { H.node = Leaf s } -> pp_symbol ?arity:(Some 0) ppf s
+    | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
 
     (* Print a function application as S-expression *)
-    | { H.node = Node (s, a) } -> 
+    | { H.node = App (s, a) } -> 
 
       Format.fprintf ppf 
         "@[<hv 1>(%a@ %a)@]" 
@@ -795,7 +772,7 @@ struct
         (pp_print_term' pp_symbol (db + List.length x)) t
 
     (* Print an annotated term *)
-    | { H.node = Annot (t, a) } ->
+    | { H.node = Attr (t, a) } ->
 
       Format.fprintf ppf 
         "@[<hv 1>(!@ @[<hv 1>%a@] @[<hv 1>%a@])@]" 
@@ -852,7 +829,7 @@ struct
 
     | Var v -> Format.fprintf ppf "Var@ %a" T.pp_print_var v
 
-    | Const s -> Format.fprintf ppf "Const@ %a" (pp_symbol ?arity:(Some 0)) s
+    | App (s, []) -> Format.fprintf ppf "Const@ %a" (pp_symbol ?arity:(Some 0)) s
 
     | App (s, l) ->
 
@@ -945,7 +922,7 @@ struct
       (* Free variable, bound variable or constant *)
       | (db, MTree ({ H.node = FreeVar _ } as n)) :: s
       | (db, MTree ({ H.node = BoundVar _ } as n)) :: s
-      | (db, MTree ({ H.node = Leaf _ } as n)) :: s -> 
+      | (db, MTree ({ H.node = App (_, []) } as n)) :: s -> 
 
         (* Apply the function immediately and push result to the
            accumulator *)
@@ -954,13 +931,13 @@ struct
           | _ -> assert false)
 
       (* Function application *)
-      | (db, MTree { H.node = Node (o, a)}) :: s -> 
+      | (db, MTree { H.node = App (o, a)}) :: s -> 
 
         (* Push symbol and subterms in reverse order to the stack *)
         map f ([] :: accum) (push db a ((db, MNode o) :: s))
 
       (* Annotated term *)
-      | (db, MTree { H.node = Annot (t, a)}) :: s -> 
+      | (db, MTree { H.node = Attr (t, a)}) :: s -> 
 
         (* Push annotation and terms to the stack *)
         map f ([] :: accum) ((db, MTree t) :: (db, MAnnot a) :: s)
@@ -1001,7 +978,7 @@ struct
 
         (* Rebuild function application with mapped subterms *)
         (match accum with 
-          | h :: h' :: d -> map f ((f db (ht_node op h) :: h') :: d) s
+          | h :: h' :: d -> map f ((f db (ht_app op h) :: h') :: d) s
           | _ -> assert false)
 
       (* Annotation *)
@@ -1009,7 +986,7 @@ struct
 
         (* Rebuild annotated term with mapped terms *)
         (match accum with 
-          | [h] :: h' :: d -> map f ((f db (ht_annot h a) :: h') :: d) s
+          | [h] :: h' :: d -> map f ((f db (ht_attr h a) :: h') :: d) s
           | _ -> assert false)
 
       (* Let binding *)
@@ -1092,9 +1069,8 @@ struct
      fold. *)
   let construct = function 
     | Var v -> ht_free_var v
-    | Const c -> ht_leaf c
-    | App (s, l) -> ht_node s l
-    | Attr (t, a) -> ht_annot t a
+    | App (s, l) -> ht_app s l
+    | Attr (t, a) -> ht_attr t a
 
 
   (* Folding function for bottom-up right-to-left evaluation of a term;
@@ -1144,9 +1120,9 @@ struct
       )
 
     (* The top element of the stack is a constant *)
-    | FTree (_, { H.node = Leaf op }) :: tl -> 
+    | FTree (_, { H.node = App (op, []) }) :: tl -> 
 
-      let t = Const op in
+      let t = App (op, []) in
 
       (* Apply function to constant and continue with result *)
       (match accum with 
@@ -1164,7 +1140,7 @@ struct
         | _ -> assert false)
 
     (* The top element of the stack is a non-nullary function *)
-    | FTree (db, { H.node = Node (op, args) }) :: tl -> 
+    | FTree (db, { H.node = App (op, args) }) :: tl -> 
 
       (* Push the argument terms as FTree on the instruction stack in
          reverse order *)
@@ -1178,7 +1154,7 @@ struct
       fold f subst ([] :: accum) (push args (FNode (op, args) :: tl))
 
     (* The top element of the stack is an annotated term *)
-    | FTree (db, { H.node = Annot (t, _) }) :: tl -> 
+    | FTree (db, { H.node = Attr (t, _) }) :: tl -> 
 
       (* Remove annotation and continue with unannotated term *)
       fold f subst accum ((FTree (db, t)) :: tl)
@@ -1385,7 +1361,7 @@ struct
 
       (* Apply to free variable and constants *)
       | { H.node = FreeVar _ } 
-      | { H.node = Leaf _ } as t -> 
+      | { H.node = App (_, []) } as t -> 
         
         (* Apply function to term *)
         (match f t with
@@ -1400,13 +1376,13 @@ struct
       | { H.node = BoundVar _ } as t -> t
 
       (* Apply to node *)
-      | { H.node = Node (s, l) } as t -> 
+      | { H.node = App (s, l) } as t -> 
 
         (* Apply function to term *)
         (match f t with
 
           (* Recurse to subterms if no change  *)
-          | None -> ht_node s (List.map (map_top f) l)
+          | None -> ht_app s (List.map (map_top f) l)
 
           (* Check substitution and return if changed *)
           | Some t' -> check_t t')
@@ -1433,12 +1409,11 @@ struct
             match n with 
               | FreeVar v -> FreeVar (T.import_var v)
               | BoundVar i -> n
-              | Leaf s -> Leaf (T.import_symbol s)
-              | Node (s, l) -> Node (T.import_symbol s, l)
+              | App (s, l) -> App (T.import_symbol s, l)
               | Let (l, b) -> Let (import_lambda l, b)
               | Exists l -> Exists (import_lambda l)
               | Forall l -> Forall (import_lambda l)
-              | Annot (t, a) -> Annot (import t, a)
+              | Attr (t, a) -> Attr (import t, a)
           in
           Ht.hashcons ht n' (prop_of_term_node n'))
       term
@@ -1486,14 +1461,11 @@ struct
 
       ht_forall (hl_lambda n (bump_and_bind b (k + (List.length n)) s))
 
-    (* Constant *)
-    | { H.node = Leaf t } -> ht_leaf t
-
     (* Function application *)
-    | { H.node = Node (s, a) } -> ht_node s (List.map (bump_and_bind b k) a)
+    | { H.node = App (s, a) } -> ht_app s (List.map (bump_and_bind b k) a)
 
     (* Annotated term *)
-    | { H.node = Annot (t, a) } -> ht_annot (bump_and_bind b k t) a
+    | { H.node = Attr (t, a) } -> ht_attr (bump_and_bind b k t) a
 
   
   (* Bind a free variable in the term given an association list of
@@ -1563,13 +1535,10 @@ struct
   let mk_var v = ht_free_var v
 
   (* Constructor for a constant *)
-  let mk_const s = ht_leaf s
+  let mk_const s = ht_app s []
 
   (* Constructor for a function application *)
-  let mk_app s a = 
-    match a with
-      | [] -> assert false
-      | _ -> ht_node s a
+  let mk_app s a = ht_app s a
 
   (* Constructor for a let binding: 
      [let x_1 : s_1 = t_1; ...; x_n : s_n = t_n in s] *)
@@ -1747,7 +1716,7 @@ struct
   let mk_forall x t = ht_forall (mk_lambda x t)
 
   (* Constructor for annotated term *)
-  let mk_annot t a = ht_annot t a 
+  let mk_attr t a = ht_attr t a 
 
   (* Return the node of a hashconsed term *)
   let node_of_t { Hashcons.node = n } = n
@@ -1785,32 +1754,32 @@ struct
 
 
   (* Return true if the term is a leaf symbol *)
-  let is_leaf = function
-    | { H.node = Leaf _ } -> true 
+  let is_leaf : 'a t -> bool = function
+    | { H.node = App (_, []) } -> true 
     | _ -> false 
 
 
   (* Return the symbol of a leaf term *)
-  let leaf_of_t = function
-    | { H.node = Leaf s } -> s
+  let leaf_of_t : 'a t -> symbol = function
+    | { H.node = App (s, []) } -> s
     | _ -> invalid_arg "leaf_of_t"
 
 
   (* Return true if the term is a function application *)
-  let is_node = function
-    | { H.node = Node _ } -> true 
+  let is_app : 'a t -> bool = function
+    | { H.node = App _ } -> true 
     | _ -> false 
 
 
   (* Return the symbol of a function application *)
-  let node_symbol_of_t = function
-    | { H.node = Node (s, _) } -> s 
+  let app_symbol_of_t : 'a t -> symbol = function
+    | { H.node = App (s, _) } -> s 
     | _ -> invalid_arg "node_symbol_of_t"
 
 
   (* Return the arguments of a function application *)
-  let node_args_of_t = function
-    | { H.node = Node (_, l) } -> l 
+  let app_args_of_t : 'a t -> 'a t list = function
+    | { H.node = App (_, l) } -> l 
     | _ -> invalid_arg "node_args_of_t"
 
 
@@ -1845,21 +1814,21 @@ struct
 
 
   (* Return true if the term is a named term *)
-  let is_annot  = function
-    | { H.node = Annot (_, a) } -> true
+  let is_attr : 'a t -> bool = function
+    | { H.node = Attr (_, a) } -> true
     | _ -> false
 
 
   (* Return the term in an annotation *)
-  let annot_t_of_t  = function
-    | { H.node = Annot (t, _) } -> t
-    | _ -> invalid_arg "annot_t_of_t"
+  let attr_t_of_t : 'a t -> 'a t = function
+    | { H.node = Attr (t, _) } -> t
+    | _ -> invalid_arg "attr_t_of_t"
 
 
   (* Return the annotation of an annotated named term *)
-  let annot_of_t  = function
-    | { H.node = Annot (_, a) } -> a
-    | _ -> invalid_arg "annot_of_t"
+  let attr_of_t : 'a t -> attr = function
+    | { H.node = Attr (_, a) } -> a
+    | _ -> invalid_arg "attr_of_t"
 
 
   (* Return the top symbol of a term along with its subterms
@@ -1875,12 +1844,6 @@ struct
        when recursively evaluating a chain of let bindings *)
     | { H.node = BoundVar i } as t -> t
 
-    (* Constant *)
-    | { H.node = Leaf s }
-    | { H.node = Let ({ H.node = L (_, { H.node = Leaf s }) }, _) } -> 
-
-      ht_leaf s
-
     (* Free variable *)
     | { H.node = FreeVar v }
     | { H.node = Let ({ H.node = L (_, { H.node = FreeVar v }) }, _) } -> 
@@ -1888,13 +1851,13 @@ struct
       ht_free_var v
 
     (* Function application *)
-    | { H.node = Node (_, _) } as t -> t
+    | { H.node = App (_, _) } as t -> t
 
     (* Let binding of a function application *)
-    | { H.node = Let ({ H.node = L (i, { H.node = Node (s, l) }) }, b) } -> 
+    | { H.node = Let ({ H.node = L (i, { H.node = App (s, l) }) }, b) } -> 
 
       (* Distribute let binding over arguments of function application *)
-      ht_node 
+      ht_app
         s
         (List.map
            (function r -> trim_let_domain ofs i b r)
@@ -1925,10 +1888,10 @@ struct
       destruct' ofs (List.nth l (List.length l - i))
 
     (* Let binding of an annotated term *)
-    | { H.node = Let ({ H.node = L (i, { H.node = Annot (t, a) }) }, b) } -> 
+    | { H.node = Let ({ H.node = L (i, { H.node = Attr (t, a) }) }, b) } -> 
 
       (* Move let binding over annotation to term *)
-      ht_annot 
+      ht_attr
         (ht_let (hl_lambda i t) b)
         a
 
@@ -1941,29 +1904,25 @@ struct
       invalid_arg "destruct: quantified term"
 
     (* Annotated term  *)
-    | { H.node = Annot (_, _) } as t -> t
+    | { H.node = Attr (_, _) } as t -> t
 
   
 
   (* *)
   let rec destruct t = match destruct' 0 t with
 
-    (* Constant *)
-    | { H.node = Leaf s } ->
-       Const s
-
     (* Free variable *)
     | { H.node = FreeVar v } -> Var v
 
     (* Function application *)
-    | { H.node = Node (s, l) } -> App (s, l)
+    | { H.node = App (s, l) } -> App (s, l)
 
     (* Bound variable *)
     | { H.node = BoundVar _ } -> 
        invalid_arg "destruct: bound variable"
 
     (* Skip over annotations *)
-    | { H.node = Annot (t, _) } -> destruct t
+    | { H.node = Attr (t, _) } -> destruct t
 
     (* No other terms returned by destrcut' *)
     | _ -> assert false

@@ -64,23 +64,6 @@ let vars_of_term term =
 
             | _ -> assert false)
 
-        | Term.T.Const _ -> 
-          
-          (function 
-            | [] -> 
-
-              (* Add to hash table as a list of variables, this
-                 probably takes up less memory than storing the set *)
-              Term.TermHashtbl.replace 
-                vars_of_term_cache 
-                term 
-                [];
-
-              (* Start with empty set in accumulator *)
-              Var.VarSet.empty 
-
-            | _ -> assert false)
-
         | Term.T.App _ -> 
 
           (function l -> 
@@ -241,7 +224,7 @@ let extract uf_defs env term =
   and extract_term_flat ((bool, int) as accum) polarity env = function 
 
     (* Constant *)
-    | Term.T.Const s -> 
+    | Term.T.App (s, []) -> 
 
       (match Symbol.node_of_symbol s with
 
@@ -874,15 +857,15 @@ let extract uf_defs env term =
 
           )
 
+        (* Keep other terms *)
+        | Term.T.Var _ 
+        | Term.T.App (_, []) -> ([], Term.T.construct fterm)
+
         (* Construct new term *)
         | Term.T.App (sym, _) -> 
 
           let (accum', args') = List.split args in 
           (List.concat accum', Term.T.mk_app sym args')
-
-        (* Keep other terms *)
-        | Term.T.Var _ 
-        | Term.T.Const _ -> ([], Term.T.construct fterm)
 
         | Term.T.Attr (t, _) -> 
           match args with [(a, _)] -> (a, t) | _ -> assert false

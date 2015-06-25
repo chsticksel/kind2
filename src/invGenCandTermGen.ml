@@ -189,15 +189,14 @@ module CandidateTermGen = struct
 
     let rec is_const term =
       match Term.destruct term with
+      | Term.T.App (_,[])  -> true
       | Term.T.App (_,_) -> false
       | Term.T.Var _ -> false
       | Term.T.Attr (kid,_) -> is_const kid
-      | _ -> true
 
     let rec is_var term =
       match Term.destruct term with
       | Term.T.App (_,_) -> false
-      | Term.T.Const _ -> false
       | Term.T.Attr (kid,_) -> is_var kid
       | _ -> true
 

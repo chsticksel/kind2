@@ -547,12 +547,11 @@ let ensure_term_qf_lira t =
   Term.T.map
     (fun _ t -> match Term.T.node_of_t t with
        | Term.T.FreeVar _ | Term.T.BoundVar _ -> t
-       | Term.T.Leaf s -> ensure_symbol_qf_lira s; t
-       | Term.T.Node (s, a) ->
+       | Term.T.App (s, a) ->
          ensure_symbol_qf_lira s; t
        | Term.T.Let (lam, a) -> t
        | Term.T.Exists lam | Term.T.Forall lam -> t
-       | Term.T.Annot _ -> t)
+       | Term.T.Attr _ -> t)
     t
      
   |> ignore
@@ -808,7 +807,7 @@ let check_sat_assuming solver exprs =
   fast_push solver 1;
   let res = List.fold_left (fun acc expr ->
       match Term.destruct expr with
-        | Term.T.App (s, []) | Term.T.Const s when Symbol.is_uf s ->
+        | Term.T.App (s, []) when Symbol.is_uf s ->
           (* Register name of litterals for unsat core *)
           let name = 
             s |> Symbol.uf_of_symbol |> UfSymbol.string_of_uf_symbol in

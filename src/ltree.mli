@@ -21,11 +21,14 @@
     An abstract term extends a basic first-order term structure with
     let bindings and existential and universal quantifiers. 
 
-    You should generally prefer to use the functions provided in the
-    {!Term} module. The functions provided by this module are more
-    elementary and less safe.
+    You should generally use the functions provided in the {!Term}
+    module. The functions provided by this module are more elementary
+    and less safe. See {!Ltree.Make} for the functions that can be
+    accessed as {!Term.T}.
 
-    (** {2 Functorial Interface} *)
+    {1 Implementation Notes} 
+
+    {2 Functorial Interface} 
 
     The abstract term is parametrized by the four types of symbols,
     free variables, sorts and attributes, which are paramters to the
@@ -44,7 +47,42 @@
     ['a] that is instantiated either to the type {!S.safe} or
     {!S.unsafe}, indicating if the term is a proper term.
 
+    {2 deBruijn Indexes} 
+    
+    We use deBruijn indexes in reverse to do nameless abstraction for
+    bound variables. The variable with index [i] is bound to the
+    [i]-th lambda abstraction counted upwards the parse tree from the
+    occurrence of the variable:
 
+    {[ \x. \y. (f x y) ]}
+
+    [x]'s index is 2, [y]'s index is 1.
+
+    This means that although two bound variables may have the
+    different indexes, they can be bound to the same lambda
+    abstraction. The advantage of this representation is better
+    sharing, because labmda abstracting a term does not change the
+    indexes of the bound variables in the term.
+
+    To give examples, let us omit the names of the bound variables and
+    write a bound variable as [xn], where [n] is its deBruijn
+    index. Also note that these examplese are to illustrate the
+    indexes only, and lambda abstractions do not occur in this pure
+    form in the terms of this module.
+
+    In
+
+    {[ \. (f x1 \. (g x2 a)) ]}
+
+    both [x1] and [x2] are bound to the outermost lambda. Abstracting
+    the constant [a] to a fresh bound variable results in
+
+    {[ \. (\. (f x1 \. (g x2 x3))) ]}
+
+    where the indexes of [x1] and [x2] are unchanged and the two terms
+    share as many subterms as possible.
+
+    {1 Old Notes}
 
     A basic term is 
 
@@ -126,10 +164,16 @@ sig
   (** Return the sort of a variable *)
   val sort_of_var : var -> sort
 
+  (** Import a symbol created in another process and restore physical
+      equality *)
   val import_symbol : symbol -> symbol
 
+  (** Import a variable created in another process and restore
+      physical equality *)
   val import_var : var -> var
 
+  (** Import a sort created in another process and restore physical
+      equality *)
   val import_sort : sort -> sort
 
   (** Pretty-print a symbol *)
@@ -191,12 +235,11 @@ sig
   and t_node = private
     | FreeVar of var
     | BoundVar of int
-    | Leaf of symbol
-    | Node of symbol * t_t list
+    | App of symbol * t_t list
     | Let of lambda_t * t_t list
     | Exists of lambda_t
     | Forall of lambda_t
-    | Annot of t_t * attr
+    | Attr of t_t * attr
 
   (** Properties of a term *)
   and t_prop = private { bound_vars : int list } 
@@ -217,7 +260,6 @@ sig
   *)
   type 'a flat = private 
     | Var of var
-    | Const of symbol 
     | App of symbol * 'a t list
     | Attr of 'a t * attr
 
@@ -306,7 +348,7 @@ sig
 
       Generates a safe term if and only if the term annotated is
       safe. *)
-  val mk_annot : 'a t -> attr -> 'a t
+  val mk_attr : 'a t -> attr -> 'a t
 
   (** {1 Predicates and Accessors} *)
 
@@ -326,13 +368,13 @@ sig
   val leaf_of_t : 'a t -> symbol
 
   (** Return [true] if the term is a function application *)
-  val is_node : 'a t -> bool
+  val is_app : 'a t -> bool
 
   (** Return the symbol of a function application *)
-  val node_symbol_of_t : 'a t -> symbol
+  val app_symbol_of_t : 'a t -> symbol
 
   (** Return the arguments of a function application *)
-  val node_args_of_t : 'a t -> 'a t list
+  val app_args_of_t : 'a t -> 'a t list
 
   (** Return [true] if the term is a let binding *)
   val is_let : 'a t -> bool
@@ -350,15 +392,15 @@ sig
   val lambda_of_forall : 'a t -> 'a lambda
 
   (** Return true if the term is a named term *)
-  val is_annot : 'a t -> bool
+  val is_attr : 'a t -> bool
 
   (** Return the term of a named term *)
-  val annot_t_of_t : 'a t -> 'a t
+  val attr_t_of_t : 'a t -> 'a t
 
   (** Return the name of a named term *)
-  val annot_of_t : 'a t -> attr
+  val attr_of_t : 'a t -> attr
 
-  (** {2 } *)
+  (** {2 Iterators} *)
 
   (** Return the node of a hashconsed term *)
   val node_of_t : 'a t -> t_node
