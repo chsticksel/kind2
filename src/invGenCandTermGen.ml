@@ -403,7 +403,7 @@ module CandidateTermGen = struct
     (* Updates the set reference. *)
     let set_update set' = set_ref := set' in
     
-    ( Term.eval_t
+    ( Term.eval
         ( fun flat_term _ ->
           (* Applying rules and updating set reference. *)
           set_update

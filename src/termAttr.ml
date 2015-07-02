@@ -234,7 +234,10 @@ let mk_named s n =
   (* Create and hashcons name attribute *)
   Hattr.hashcons ht (Named (s, n)) ()
 
-
+(* Import attribute from different instance to this hashcons table *)
+let import = function
+  | { Hashcons.node = Named (s, n) } -> mk_named s n
+    
 (* 
    Local Variables:
    compile-command: "make -C .. -k"

@@ -395,7 +395,7 @@ val string_of_lambda : lambda -> string
     function is called at each node of the term with the the term
     being evaluated, and the list of values computed for the
     subterms. Let bindings are lazily unfolded. *)
-val eval_t : (T.safe T.flat -> 'a list -> 'a) -> t -> 'a
+val eval : (T.safe T.flat -> 'a list -> 'a) -> t -> 'a
 
 (** Beta-evaluate a lambda expression *)
 val eval_lambda : lambda -> t list -> t
@@ -411,10 +411,10 @@ val map : (T.safe T.env -> T.unsafe T.t -> 'a T.t option) -> t -> t
 (** Convert [(= 0 (mod t n))] to [(divisble n t)]
 
     The term [n] must be an integer numeral. *)
-val mod_to_divisible : 'a T.env -> 'b T.t -> 'b T.t option
+val mod_to_divisible : 'a T.env -> 'b T.t -> 'a T.t option
 
 (** Convert [(divisble n t)] to [(= 0 (mod t n))] *)
-val divisible_to_mod : 'a T.env -> 'b T.t -> 'b T.t option
+val divisible_to_mod : 'a T.env -> 'b T.t -> 'a T.t option
 
 (** Convert negative numerals and decimals to negations of their
     absolute value *)

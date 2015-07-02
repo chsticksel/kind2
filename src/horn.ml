@@ -257,7 +257,7 @@ let classify_clause sym_p literals =
 let temp_vars_of_term term = 
 
   Var.VarSet.elements
-    (Term.eval_t
+    (Term.eval
        (function 
          | Term.T.Var v when Var.is_temp_var v -> 
            (function [] -> Var.VarSet.singleton v | _ -> assert false)
@@ -325,7 +325,7 @@ let temp_vars_to_state_vars term =
     term
        
 
-let unlet_term term = Term.construct (Term.eval_t (fun t _ -> t) term)
+let unlet_term term = Term.construct (Term.eval (fun t _ -> t) term)
 
 (*
 
@@ -416,7 +416,7 @@ let eq_to_let state_vars term accum = match term with
 let solve_eqs state_vars term =
 
   unlet_term
-    (match Term.eval_t (eq_to_let state_vars) term with
+    (match Term.eval (eq_to_let state_vars) term with
       | t, [] -> t
       | t, e -> Term.mk_let e t)
                 

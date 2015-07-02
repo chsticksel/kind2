@@ -54,6 +54,10 @@ module AttrMap : Map.S with type key = t
 (** Return a name attribute *)
 val mk_named : string -> int -> t
 
+(** Import an attribute from a different instance into this hashcons
+    table *)
+val import : t -> t 
+  
 (** {1 Accessor functions} *)
 
 (** Return true if the attribute is a name *)

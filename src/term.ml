@@ -82,6 +82,10 @@ struct
 
   let import_sort = Type.import 
 
+  let import_attr = TermAttr.import
+    
+  let pp_print_bound_var ppf i = Format.fprintf ppf "X%i" i
+    
   (* Pretty-print a symbol *)
   let pp_print_symbol = Symbol.pp_print_symbol
 
@@ -404,14 +408,9 @@ let string_of_lambda t = string_of_t pp_print_lambda t
 (* Folding and utility functions on terms                                *)
 (* ********************************************************************* *)
 
-(*
-(* Evaluate a term bottom-up right-to-left *)
-let eval = T.eval 
-*)
-
 (* Evaluate a term bottom-up right-to-left, given the flattened term
    as argument *)
-let eval_t = T.eval_t 
+let eval = T.eval 
 
 (* Evaluate a term bottom-up right-to-left, given the flattened term
    as argument *)
@@ -778,7 +777,7 @@ let rec is_atom t = match T.destruct t with
     (* All subterms must be not Boolean *)
     (List.for_all
        (function e -> 
-         T.eval_t
+         T.eval
            (function 
 
              (* Function application *)
@@ -1304,7 +1303,7 @@ let rec bump_and_apply_k f k term =
 (* Return all state variables in term *)
 let state_vars_of_term term  = 
 
-  eval_t
+  eval
     (function 
       | T.Var v -> 
         (function 
@@ -1328,7 +1327,7 @@ let vars_of_term term =
 
   (* Collect all variables in a set *)
   let var_set = 
-    eval_t
+    eval
       (function 
         | T.Var v -> 
           (function [] -> Var.VarSet.singleton v | _ -> assert false)
@@ -1348,7 +1347,7 @@ let vars_of_term term =
 let state_vars_at_offset_of_term i term = 
 
   (* Collect all variables in a set *)
-  eval_t
+  eval
     (function 
       | T.Var v 
         when 
@@ -1373,7 +1372,7 @@ let state_vars_at_offset_of_term i term =
 let vars_at_offset_of_term i term = 
 
   (* Collect all variables in a set *)
-  eval_t
+  eval
     (function 
       | T.Var v 
         when 
@@ -1413,7 +1412,7 @@ let rec var_offsets_of_term expr =
     Numeral.(min_none l1 l2, max_none u1 u2) 
   in
 
-  eval_t 
+  eval 
     (function 
       | T.Var v when Var.is_state_var_instance v -> 
         (function 

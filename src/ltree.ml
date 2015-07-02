@@ -20,9 +20,11 @@ open Lib
 
 (* Abbreviation for module name *)
 module H = Hashcons
+
+(* TODO: See if this is a good idea or not *)
 (* module H = WeakHashcons *)
 
-
+  
 (* Set over integers *)
 module IntegerSet = Set.Make (struct type t = int let compare = compare end)
 
@@ -55,6 +57,10 @@ sig
 
   val import_sort : sort -> sort
 
+  val import_attr : attr -> attr
+
+  val pp_print_bound_var : Format.formatter -> int -> unit
+    
   val pp_print_symbol : Format.formatter -> symbol -> unit
 
   val pp_print_var : Format.formatter -> var -> unit
@@ -62,7 +68,7 @@ sig
   val pp_print_sort : Format.formatter -> sort -> unit
 
   val pp_print_attr : Format.formatter -> attr -> unit
-
+    
 end
 
 
@@ -179,10 +185,8 @@ sig
   val sorts_of_lambda : 'a lambda -> sort list
 
   val tag_of_t : 'a t -> int
-(*
-  val eval : (symbol -> 'a list -> 'a) -> t -> 'a
-*)
-  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
+
+  val eval : (safe flat -> 'a list -> 'a) -> safe t -> 'a
 
   val map : (safe env -> unsafe t -> 'a t option) -> 'b t -> 'b t
 (*
@@ -190,7 +194,7 @@ sig
 *)
   val destruct : safe t -> safe flat
 
-  val destruct_unsafe : 'b env -> 'a t -> 'a flat
+  val destruct_unsafe : 'a env -> 'b t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 
@@ -339,7 +343,7 @@ struct
          
 
   (* ************************************************************** *)
-  (* Types                                                          *) 
+  (* Equality, Comparison, Hashing                                  *)
   (* ************************************************************** *)
 
   (* Return hash of term *)
@@ -360,7 +364,10 @@ struct
 
     (* Two lambda abstractions are equal if the terms under the
        lambdas are equal, and number of variables and their types are
-       equal *)
+       equal 
+
+       We use physical equality for subterms, because they have been
+       hash-consed. *)
     let equal l1 l2 = match l1, l2 with
       | L (i1, t1), L (i2, t2) -> 
         (t1 == t2) &&
@@ -385,7 +392,7 @@ struct
 
   (* Unsafe constructor for hashconsed lambda abstraction 
 
-     Lambda abstraction don't have properties, hence the unit value as
+     Lambda abstractions don't have properties, hence the unit value as
      the last argument. *)
   let hl_lambda s t = Hlambda.hashcons hl (L (s, t)) ()
 
@@ -499,14 +506,11 @@ struct
   (* Hashcons table for terms *)
   let ht = Ht.create 251
 
-  (* Statistics are the statistics of the hashcons table of terms *)
-  let stats () = Ht.stats ht
-
   (* Ordering of terms based on unique tags from hash consing *)
   let compare { H.tag = t1 } { H.tag = t2 } = Pervasives.compare t1 t2
 
-  (* Equality of terms based on tags *)
-  let equal { H.tag = t1 } { H.tag = t2 } = t1 = t2
+  (* Equality of terms is physical equality *)
+  let equal = (==)
 
   (* Hashing based on stored hash *)
   let hash { H.hkey = h } = h
@@ -514,11 +518,20 @@ struct
   (* Return unique identifier *)
   let tag { H.tag = i } = i
 
+  (* Statistics are the statistics of the hashcons table of terms *)
+  let stats () = Ht.stats ht
+
+    
+  (* ************************************************************** *)
+  (* Bound Variables                                                *)
+  (* ************************************************************** *)
+
   (* Read bound variables from term properties and add to list without
      duplicates *)
   let bound_vars_of_terms accum t = 
 
-    (* Add lists of bound variables to a set and return elements of set *)
+    (* Add lists of bound variables to a set and return elements of
+       set *)
     IntegerSet.elements
       (List.fold_left 
          (fun a { H.prop = { bound_vars } } -> 
@@ -526,68 +539,82 @@ struct
          accum
          t)
 
-  (* Reduce list of variables to those bound outside a lambda
-     abstraction of l variables, and adjust their indexes *)
+  (* Reduce list of bound variable indexes to those bound outside a
+     lambda abstraction of l variables, and adjust their indexes by
+     subtracting the number of variables of the abstraction *)
   let bound_vars_outside_lambda l b = 
 
+    (List.fold_left
+
+       (fun a i -> 
+
+         (* Is the variable bound outside this lambda abstraction *)
+         if i > l then 
+
+           (* Adjust distance to bound term *)
+           i - l :: a 
+
+         else 
+
+           (* Discard variable bound by this lambda abstraction *)
+           a)
+       
+       []
+
+       b)
+
     (* Return in original order *)
-    List.rev
+    |> List.rev
 
-      (List.fold_left
-
-         (fun a i -> 
-
-            (* Is the variable bound outside this lambda abstraction *)
-            if i > l then 
-
-              (* Adjust distance to bound term *)
-              i - l :: a 
-
-            else 
-
-              (* Discard variable bound by this lambda abstraction *)
-              a)
-
-         []
-
-         b)
 
   (* Read bound variables of properties subterms and return as list *)
   let bound_vars_of_term_node = function
 
-    (* Free variable or constant do not have bound variables *)
-    | FreeVar _ 
-    | App (_, [])  -> []
+    (* Free variables do not have bound variables as subterms *)
+    | FreeVar _ -> []
 
-    (* Bound variable is the only bound variables *)
+    (* Bound variables are the only bound variable in its subterms *)
     | BoundVar i -> [i]
 
     (* Bound variables in a function application are the bound
-       variables in subterms *)
+       variables in the arguments *)
     | App (_, l) -> bound_vars_of_terms IntegerSet.empty l
 
     (* Bound variables in let bindings are bound variables in term and
        bound variables in substituted terms *)
     | Let ({ H.node = L (_, { H.prop = { bound_vars } } ) }, l)  -> 
 
+      (* In the term [(let ((_ t)) (+ X1 X2))] the variable X2 is
+         bound outside the term, but X1 is not. If we shift X2 over
+         the binder, it becomes X1.
+
+         Take the variables of the term under the lambda, filter out
+         the variables that are bound by the lambda, and subtract the
+         number of variables in the lambda from the indexes of the
+         remaining bound variables.*)
       let bound_vars' =
         bound_vars_outside_lambda (List.length l) bound_vars
       in
 
+      (* Add the bound variables in the substitutions of the let
+         binding *)
       bound_vars_of_terms (IntegerSet.of_list bound_vars') l 
 
-
-    (* Bound variables in quantifier are variables in quantified term *)
+    (* Bound variables in quantifier are variables in quantified
+       term *)
     | Exists { H.node = L (i, { H.prop = { bound_vars } }) } 
     | Forall { H.node = L (i, { H.prop = { bound_vars } }) } -> 
 
+      (* See the comment for Let: take variables that are bound
+         outside the lambda for the quantifier and subtract the number
+         of variables in the quantifier from the index *)
       bound_vars_outside_lambda (List.length i) bound_vars
 
     (* Bound variables in annotated term are bound variables in term *)
     | Attr ({ H.prop = { bound_vars } }, _) -> bound_vars
 
 
-  (* Initilize property of term *)
+  (* Initialize property of term *)
   let prop_of_term_node t = 
 
     (* Get bound variables from term to construct *)
@@ -604,6 +631,10 @@ struct
     (* Return properties of term *)
     { bound_vars } 
    
+
+  (* ************************************************************** *)
+  (* Unsafe constructors                                            *)
+  (* ************************************************************** *)
 
   (* Unsafe constructor for a term *)
   let ht_term t = Ht.hashcons ht t (prop_of_term_node t)
@@ -643,6 +674,17 @@ struct
     let n : t_node = Attr (t, a) in
     Ht.hashcons ht n (prop_of_term_node n)
 
+  (* Convert the flattened representation back into an abstract syntax
+     term
+
+     Use unsafe constructors here, because this function is used by
+     eval. *)
+  let construct = function 
+    | Var v -> ht_free_var v
+    | App (s, l) -> ht_app s l
+    | Attr (t, a) -> ht_attr t a
+    | Exists l -> ht_exists l
+    | Forall l -> ht_forall l
 
 
   (* ********************************************************************* *)
@@ -662,7 +704,7 @@ struct
       let db' = succ db in 
 
       (* Print variable for de Bruijn index and its type *)
-      Format.fprintf ppf "@[<hv 1>(X%i@ %a)@]" db' T.pp_print_sort t;
+      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" T.pp_print_bound_var db' T.pp_print_sort t;
 
       (* Continue if not at the end of the list *)
       if not (tl = []) then 
@@ -683,7 +725,7 @@ struct
       let db' = succ db in
 
       (* Print variable as (Xn t) *)
-      Format.fprintf ppf "@[<hv 1>(X%i@ %a)@]" db' T.pp_print_sort s;
+      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" T.pp_print_bound_var db' T.pp_print_sort s;
 
       (* Add space and recurse if more bindings follow *)
       if not (tl = []) then 
@@ -720,8 +762,8 @@ struct
       (* Print as binding as (Xn t) *)
       Format.fprintf 
         ppf 
-        "@[<hv 1>(X%i@ %a)@]" 
-        db' 
+        "@[<hv 1>(%a@ %a)@]" 
+        T.pp_print_bound_var db' 
         (pp_print_term' pp_symbol (db - i)) t;
 
       (* Add space and recurse if more bindings follow *)
@@ -738,7 +780,9 @@ struct
     | { H.node = FreeVar v } -> T.pp_print_var ppf v
 
     (* Print bound variable with its de Bruijn index *)
-    | { H.node = BoundVar dbv } -> Format.fprintf ppf "X%i" (db - dbv + 1)
+    | { H.node = BoundVar dbv } ->
+
+      Format.fprintf ppf "%a" T.pp_print_bound_var (db - dbv + 1)
 
     (* Delegate printing of leaf to function in input module *)
     | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
@@ -856,6 +900,7 @@ struct
 
   let pp_print_flat = pp_print_flat (fun ?arity -> T.pp_print_symbol)
 
+    
   (* ********************************************************************* *)
   (* Auxiliary functions                                                   *)
   (* ********************************************************************* *)
@@ -870,8 +915,9 @@ struct
      [s] *)
   let rec int_seq s n = int_seq' [] (pred (s + n)) n
 
+    
   (* ********************************************************************* *)
-  (* Folding function                                                      *)
+  (* Map of term                                                           *)
   (* ********************************************************************* *)
 
 
@@ -884,13 +930,23 @@ struct
     | MForall of sort list
     | MAttr of attr
 
-  (* Tail-recursive bottom-up right-to-left map on the term
+  (* Tail-recursive bottom-up right-to-left map on the term. The
+     function is evaluated at each subterm, including let bindings
+     and quantifiers.
 
-     Not every subterm is a proper term, since the de Bruijn indexes are
-     shifted. Therefore, the function [f] is called with the number of
-     let bindings the subterm is under as first argument, so that the
-     indexes can be adjusted in the subterm if necessary. 
+     Not every subterm is a proper term, since an occurrence of a
+     bound variable can be refer to a binder outside the subterm,
+     hence the term is unsafe. However, we can give an environment to
+     evaluate the term in. The first two arguments can be passed to
+     {!destruct_unsafe} to obtain a safe term for use in pattern
+     matching.
 
+     If the function returns [None], the subterm is unchanged,
+     otherwise the subterm is replaced by the given term. If the term
+     to substitute contains a bound variable that would make the
+     resulting term non-proper, the exception [Invalid_argument] is
+     raised.
+     
      We keep a stack and an accumulator when traversing the term: 
 
      - The stack contains one of five values. A [MTtree t] value maps
@@ -920,7 +976,7 @@ struct
     in
 
     (* Ensure bound variables in term do not go outside current
-       environmen t*)
+       environment *)
     let check_res env default = function
 
       (* Return default on empty result *)
@@ -1106,7 +1162,7 @@ struct
 
       
   (* ********************************************************************* *)
-  (* Folding function                                                      *)
+  (* Evaluate a Term                                                       *)
   (* ********************************************************************* *)
 
   (* Variable assignments *)
@@ -1118,73 +1174,50 @@ struct
     (* Cached evaluation *)
     | E of 'b
 
-  (* ********************************************************************* *)
-  (* Folding function keeping the term                                     *)
-  (* ********************************************************************* *)
-
 
   (* We need a separate type to store the term when moving bottom-up *)
-  type ('a, 'b) fold_tstack = 
+  type ('a, 'b) evalstack = 
 
     (* Recurse into tree *)
-    | FTree of int * 'a t 
+    | ETree of int * 'a t 
 
     (* Combine evaluated arguments from the result stack *)
-    | FNode of 'b * 'a t list
+    | ENode of 'b * 'a t list
 
     (* Pop [n] substitutions from the context *)
-    | FPop of int 
+    | EPop of int 
 
     (* Add top of the result stack as substitution for variable [n] to
        the context *)
-    | FCtx of int
+    | ECtx of int
 
+  (* Evaluation function for bottom-up right-to-left evaluation of a
+     term; substitutions for variables are evaluated lazily and at
+     most once
 
+     We keep three stacks when traversing the term: 
 
-  (* Convert the flattened representation back into an abstract syntax
-     term
+     - The context stack is an association list of variables to either
+     terms or cached values. Elements on the context stack are in
+     reverse order of the de Bruijn indices. 
 
-     Use unsafe constructors here, because this function is used by
-     fold. *)
-  let construct = function 
-    | Var v -> ht_free_var v
-    | App (s, l) -> ht_app s l
-    | Attr (t, a) -> ht_attr t a
-    | Exists l -> ht_exists l
-    | Forall l -> ht_forall l
+     - The instruction stack contains one of four values. An [ETree t]
+     value evaluates the subterms of [t] and pushes the result onto the
+     result stack. An [ENode s] value takes the list of values of its
+     subterms from the result stack and evaluates these for the top
+     symbol [s]. An [ECtx i] value takes the top element of the result
+     stack, which is the value of the variable [i] and replaces the
+     assignment to variable [i] on the context stack with the value. An
+     [EPop n] value marks the end of scope of [n] variables, the top [n]
+     elements of the context stack are removed.
 
-  (* Folding function for bottom-up right-to-left evaluation of a term;
-   substitutions for variables are evaluated lazily and evaluated
-   only once
-
-   We keep three stacks when traversing the term: 
-
-   - The context stack is an association list of variables to either
-   terms or cached values. Elements on the context stack are in
-   reverse order of the de Bruijn indices. 
-
-   - The instruction stack contains one of four values. An [FTree t]
-   value evaluates the subterms of [t] and pushes the result onto the
-   result stack. An [FNode s] value takes the list of values of its
-   subterms from the result stack and evaluates these for the top
-   symbol [s]. An [FCtx i] value takes the top element of the result
-   stack, which is the value of the variable [i] and replaces the
-   assignment to variable [i] on the context stack with the value. An
-   [FPop n] value marks the end of scope of [n] variables, the top [n]
-   elements of the context stack are removed.
-
-   - The result stack is a list of lists of values for the subterms of
-   a term. When recursing into the subterms an empty value is added
-   and when moving back up, a list of values is popped from the result
-   stack. When a variable needs to be evaluated, its value is computed
-   and taken from the stack. If the instruction stack is empty, the
-   result stack contains a singleton list with the final result.
-
-*)
-
-  (* Variant of the folding function above, where the term that is we
-     are looking at is given as an argument to the function *)
-  let rec fold f subst accum = function 
+     - The result stack is a list of lists of values for the subterms of
+     a term. When recursing into the subterms an empty value is added
+     and when moving back up, a list of values is popped from the result
+     stack. When a variable needs to be evaluated, its value is computed
+     and taken from the stack. If the instruction stack is empty, the
+     result stack contains a singleton list with the final result. *)
+  let rec eval' f subst accum = function 
 
     (* The stack is empty, we are done *)
     | [] -> 
@@ -1200,47 +1233,47 @@ struct
       )
 
     (* The top element of the stack is a constant *)
-    | FTree (_, { H.node = App (op, []) }) :: tl -> 
+    | ETree (_, { H.node = App (op, []) }) :: tl -> 
 
       let t = App (op, []) in
 
       (* Apply function to constant and continue with result *)
       (match accum with 
-        | h :: d -> fold f subst (((t, f t []) :: h) :: d) tl
+        | h :: d -> eval' f subst (((t, f t []) :: h) :: d) tl
         | _ -> assert false)
 
     (* The top element of the stack is a free variable *)
-    | FTree (_, { H.node = FreeVar v }) :: tl -> 
+    | ETree (_, { H.node = FreeVar v }) :: tl -> 
 
       let t = Var v in 
 
       (* Apply function to variable and continue with result *)
       (match accum with 
-        | h :: d -> fold f subst (((t, f t []) :: h) :: d) tl
+        | h :: d -> eval' f subst (((t, f t []) :: h) :: d) tl
         | _ -> assert false)
 
     (* The top element of the stack is a non-nullary function *)
-    | FTree (db, { H.node = App (op, args) }) :: tl -> 
+    | ETree (db, { H.node = App (op, args) }) :: tl -> 
 
-      (* Push the argument terms as FTree on the instruction stack in
+      (* Push the argument terms as ETree on the instruction stack in
          reverse order *)
       let rec push trees st = match trees with
         | [] -> st
-        | h :: t -> push t ((FTree (db, h)) :: st)
+        | h :: t -> push t ((ETree (db, h)) :: st)
       in
 
       (* Add an empty list to the result stack, and the subterms to
          the instruction stack followed by the symbol *)
-      fold f subst ([] :: accum) (push args (FNode (op, args) :: tl))
+      eval' f subst ([] :: accum) (push args (ENode (op, args) :: tl))
 
     (* The top element of the stack is an annotated term *)
-    | FTree (db, { H.node = Attr (t, _) }) :: tl -> 
+    | ETree (db, { H.node = Attr (t, _) }) :: tl -> 
 
       (* Remove annotation and continue with unannotated term *)
-      fold f subst accum ((FTree (db, t)) :: tl)
+      eval' f subst accum ((ETree (db, t)) :: tl)
 
     (* The top element of the stack is a bound variable *)
-    | FTree (dbm, { H.node = BoundVar db }) :: tl -> 
+    | ETree (dbm, { H.node = BoundVar db }) :: tl -> 
 
       ( 
 
@@ -1262,13 +1295,13 @@ struct
             (* Evaluate term assigned to variable as top term, add
                value to the context stack and evaluate variable
                again *)
-            fold 
+            eval' 
               f 
               subst 
               ([] :: accum) 
-              (FTree (dbl, t) :: 
-               FCtx  (dbm - db + 1) :: 
-               FTree (dbm, (ht_bound_var db)) :: 
+              (ETree (dbl, t) :: 
+               ECtx  (dbm - db + 1) :: 
+               ETree (dbm, (ht_bound_var db)) :: 
                tl)
 
           (* Assignment to variable has been evaluated before *)
@@ -1284,7 +1317,7 @@ struct
 
                   (* Add evaluation of the variable and add it to the
                      result stack *)
-                  fold f subst ((l :: es) :: d) tl
+                  eval' f subst ((l :: es) :: d) tl
 
                 | _ -> assert false
 
@@ -1293,7 +1326,7 @@ struct
       )
 
     (* The top element of the stack is a let binding *)
-    | FTree (db, { H.node = Let ({ H.node = L (n, l) }, t) }) :: tl -> 
+    | ETree (db, { H.node = Let ({ H.node = L (n, l) }, t) }) :: tl -> 
 
       (* Substitutions to append to the context *)
       let s = 
@@ -1317,18 +1350,18 @@ struct
 
       (* Add term under lambda to instruction stack, followed by a pop
          instruction for the number of scopes added by the binding *)
-      fold 
+      eval' 
         f
         subst'
         accum
-        (FTree (db + (List.length n), l) :: FPop (List.length n) :: tl)
+        (ETree (db + (List.length n), l) :: EPop (List.length n) :: tl)
 
     (* The top element of the stack is a quantified term *)
-    | FTree (_, { H.node = Exists _ }) :: tl
-    | FTree (_, { H.node = Forall _ }) :: tl -> invalid_arg "Quantified term"
+    | ETree (_, { H.node = Exists _ }) :: tl
+    | ETree (_, { H.node = Forall _ }) :: tl -> invalid_arg "Quantified term"
 
     (* The top element of the instruction stack is a symbol *)
-    | FNode (op, args) :: tl -> 
+    | ENode (op, args) :: tl -> 
 
       (
 
@@ -1343,36 +1376,36 @@ struct
 
             (* Evaluate the top element on the result stack with the
                symbol and add it to the result stack *)
-            fold f subst (((t, f t r) :: es') :: d) tl
+            eval' f subst (((t, f t r) :: es') :: d) tl
 
           | _ -> assert false
 
       )
 
     (* The top element of the stack is an empty end-of-scope marker *)
-    | FPop 0 :: tl -> 
+    | EPop 0 :: tl -> 
 
       (* Remove marker from the instruction stack *)
-      fold f subst accum tl
+      eval' f subst accum tl
 
     (* The top element of the stack is a positive end-of-scope marker *)
-    | FPop i :: tl when i > 0 -> 
+    | EPop i :: tl when i > 0 -> 
 
       (
 
         match subst with 
 
           (* Pop one scope from the context stack *)
-          | _ :: subst' -> fold f subst' accum (FPop (pred i) :: tl)
+          | _ :: subst' -> eval' f subst' accum (EPop (pred i) :: tl)
           | [] -> assert false
 
       )
 
     (* The top element of the stack is a negative end-of-scope marker *)
-    | FPop _ :: _ -> assert false
+    | EPop _ :: _ -> assert false
 
     (* The top of the stack is an evaluation of the context *)
-    | FCtx i :: itl -> 
+    | ECtx i :: itl -> 
 
       (
 
@@ -1380,26 +1413,18 @@ struct
 
           | [t] :: atl -> 
 
+            (* Store evaluation of term *) 
             let rec aux accum = function 
               | [] -> List.rev accum 
               | (v, _) :: tl when v = i -> List.rev_append ((v, E t) :: accum) tl 
               | h :: tl -> aux (h :: accum) tl
             in
-(*
-            (* Modify context to store evaluation for variable *)
-            let subst' = 
-              List.map 
-                (function 
-                  | (v, _) when v = i -> (v, E t)
-                  | e -> e)
-                subst
-            in
-*)
+
             (* Modify context to store evaluation for variable *)
             let subst' = aux [] subst in 
 
             (* Continue with modified context *)
-            fold f subst' atl itl
+            eval' f subst' atl itl
 
           (* Result stack is never empty and has a singleton list as
              first element *)
@@ -1413,8 +1438,8 @@ struct
      list of values computed for the subterms. Let bindings are lazily
      unfolded.
   *)
-  let eval_t f t = 
-    fold f [] [[]] [FTree (0, t)]
+  let eval f t = 
+    eval' f [] [[]] [ETree (0, t)]
 
 (*
 
@@ -1469,93 +1494,19 @@ struct
         
 *)
 
-  let rec import_lambda = function { H.node = L (i, t) } -> 
-
-    let i' = List.map T.import_sort i in
-    
-    let t' = import t in
-
-    hl_lambda i' t'
-    
-
-  (* Import a term into the hashcons table by rebuilding it bottom
-      up *)
-  and import term = 
-
-    map
-      (function _ -> 
-        function { H.node = n } -> 
-          let n' = 
-            match n with 
-              | FreeVar v -> FreeVar (T.import_var v)
-              | BoundVar i -> n
-              | App (s, l) -> App (T.import_symbol s, l)
-              | Let (l, b) -> Let (import_lambda l, b)
-              | Exists l -> Exists (import_lambda l)
-              | Forall l -> Forall (import_lambda l)
-              | Attr (t, a) -> Attr (import t, a)
-          in
-          Some (Ht.hashcons ht n' (prop_of_term_node n')))
-      term
-
-  (* Bind free variables in a term and adjust de Bruijn indices *)
-  let rec bump_and_bind b k = function 
-
-    (* Free variable *)
-    | { H.node = FreeVar v } -> 
-
-      (
-
-        try 
-
-          (* Bind variable and set de Bruijn index if in list *)
-          ht_bound_var (List.assoc v b)
-
-        with Not_found -> 
-
-          (* Variable remains free *)
-          ht_free_var v
-
-      )
-
-    (* Variable with an index lower than the bound to be bumped *)
-    (* | BoundVar db when db < k -> BoundVar db *)
-
-    (* Variable with an index to be bumped *)
-    | { H.node = BoundVar db } -> ht_bound_var (db + List.length b)
-
-    (* Let binding *)
-    | { H.node = Let ({ H.node = L (n, s) }, t) } -> 
-
-      ht_let 
-        (hl_lambda n (bump_and_bind b (k + (List.length n)) s))
-        (List.map (bump_and_bind b k) t)
-
-    (* Existential quantifier *)
-    | { H.node = Exists { H.node = L (n, s) } } -> 
-
-      ht_exists (hl_lambda n (bump_and_bind b (k + (List.length n)) s))
-
-    (* Universal quantifier *)
-    | { H.node = Forall { H.node = L (n, s) } } -> 
-
-      ht_forall (hl_lambda n (bump_and_bind b (k + (List.length n)) s))
-
-    (* Function application *)
-    | { H.node = App (s, a) } -> ht_app s (List.map (bump_and_bind b k) a)
-
-    (* Annotated term *)
-    | { H.node = Attr (t, a) } -> ht_attr (bump_and_bind b k t) a
-
+      
+  (* ********************************************************************* *)
+  (* Smart Constructors                                                    *)
+  (* ********************************************************************* *)
   
-  (* Bind a free variable in the term given an association list of
+  (* Bind some free variables in the term given an association list of
      variables to be bound and their position in a simultaneous
      binding
 
-     We use the map on the term, which gives the number of lambdas the
-     sub-term is under in its first argument. To bind a free variable
-     we look up its relative position in the simultaneous binding, and
-     increment it. *)
+     We use the map on the term and count the number of entried in the
+     environment to find the number of lambdas the subterm is
+     under. To bind a free variable we look up its relative position
+     in the simultaneous binding, and increment it. *)
   let bind dbm term = 
 
     map
@@ -1582,10 +1533,6 @@ struct
       term
 
 
-  (* ********************************************************************* *)
-  (* Constructors                                                          *)
-  (* ********************************************************************* *)
-
   (* Constructor for a lambda expression *)
   let mk_lambda x t =
 
@@ -1610,16 +1557,20 @@ struct
 
   (* Constructor for a term *)
   let mk_term t = ht_term t
+    
 
   (* Constructor for a free variable *)
   let mk_var v = ht_free_var v
 
+    
   (* Constructor for a constant *)
   let mk_const s = ht_app s []
 
+    
   (* Constructor for a function application *)
   let mk_app s a = ht_app s a
 
+    
   (* Constructor for a let binding: 
      [let x_1 : s_1 = t_1; ...; x_n : s_n = t_n in s] *)
   let mk_let b t = 
@@ -1631,6 +1582,7 @@ struct
     (* Return let binding *)
     ht_let (mk_lambda x t) b
 
+      
   (* Create a let binding of terms to variables, eliminate bindings to
      variables that do not occur in the term *)
   let trim_let_domain 
@@ -1778,7 +1730,14 @@ struct
           bvar_terms'
 
 
-  (* Testing only, this is inefficient *)
+  (* Testing only, this is inefficient
+
+     We first construct the let binding with all variables, then trim
+     the domain to the bounds variables actually occurring. Better:
+     filter the bindings for variables actually occurring in the term,
+     and then construct a let binding with the reduced list. Use the
+     new [fold] instead of [eval] and do caching to make this
+     efficient. *)
   let mk_let_elim b t =
 
     match mk_let b t with 
@@ -1795,29 +1754,35 @@ struct
      [exists x_1 : s_1; ...; x_n : s_n = t_n in s] *)
   let mk_exists x t = ht_exists (mk_lambda x t)
 
+    
   (* Constructor for a universal quantification: 
      [forall x_1 : s_1; ...; x_n : s_n = t_n in s] *)
   let mk_forall x t = ht_forall (mk_lambda x t)
 
+    
   (* Constructor for annotated term *)
   let mk_attr t a = ht_attr t a 
+
+    
+  (* ********************************************************************* *)
+  (* Accessing the top node of the term                                    *)
+  (* ********************************************************************* *)
 
   (* Return the node of a hashconsed term *)
   let node_of_t { Hashcons.node = n } = n
 
+    
   (* Return the sorts of a hashconsed lambda abstraction *)
   let sorts_of_lambda { H.node = L (v, _) } = v
 
+    
   (* Return the node of a hashconsed lamda abstraction *)
   let node_of_lambda { H.node = l } = l
 
+    
   (* Return the tag of a hashconsed term *)
   let tag_of_t { H.tag = n } = n
 
-
-  (* ********************************************************************* *)
-  (* Accessing the top node of the term                                    *)
-  (* ********************************************************************* *)
 
   (* Return true if the term is a free variable *)
   let is_free_var = function
@@ -2037,6 +2002,63 @@ struct
 
   let unsafe_of_safe t = t
 
+    
+  (* ********************************************************************* *)
+  (* Import from Other Instance                                            *) 
+  (* ********************************************************************* *)
+    
+  (* Import a lambda into the hashcons table by rebuilding it 
+
+     We only need to import sorts, the terms have already been
+     imported *)
+  let import_lambda = function { H.node = L (i, t) } -> 
+
+    (* Import sorts of lambda abstraction *)
+    let i' = List.map T.import_sort i in
+
+    (* Hashcons lambda abstractionin this instance *)
+    hl_lambda i' t
+    
+  (* Import a term into the hashcons table by rebuilding it bottom
+     up *)
+  let import term = 
+
+    map
+      (function _ -> 
+        function { H.node = n } -> 
+          let n' = 
+            match n with
+
+              (* Import free variable *)
+              | FreeVar v -> FreeVar (T.import_var v)
+
+              (* Bound variables do not need to be imported *)
+              | BoundVar i -> BoundVar i
+
+              (* Import symbol of function application, subterms have
+                 already been imported *)
+              | App (s, l) -> App (T.import_symbol s, l)
+
+              (* Import lambda of let binding, subterms have already
+                 been imported *)
+              | Let (l, b) -> Let (import_lambda l, b)
+
+              (* Import lambda of quantifiers *)
+              | Exists l -> Exists (import_lambda l)
+              | Forall l -> Forall (import_lambda l)
+
+              (* Import attribute, subterm has already been
+                 imported *)
+              | Attr (t, a) -> Attr (t, T.import_attr a)
+          in
+
+          (* Replace subterm with term hashconsed in this instance *)
+          Some (Ht.hashcons ht n' (prop_of_term_node n')))
+      
+      term
+
+
+    
 end
 
 (* 

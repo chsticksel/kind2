@@ -1066,7 +1066,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
         (* Free variable with assignment in model *)
         | Model.Term v' ->
 
-          Term.eval_t
+          Term.eval
             (simplify_term_node default_of_var uf_defs model)
             v'
            
@@ -1086,7 +1086,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
           if Term.equal t t' then atom_of_term t else
 
             (* Evaluate default value of variable *)
-            Term.eval_t
+            Term.eval
               (simplify_term_node default_of_var uf_defs model)
               t'
 
@@ -1139,7 +1139,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
                 uf_def
             in
 
-            (Term.eval_t 
+            (Term.eval 
                (simplify_term_node default_of_var uf_defs model) 
                term')
 
@@ -1190,7 +1190,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
                 Term.pp_print_term term'
             in
 
-            (Term.eval_t
+            (Term.eval
                (simplify_term_node default_of_var uf_defs model) 
                term')
 
@@ -1242,7 +1242,7 @@ let rec simplify_term_node default_of_var uf_defs model fterm args =
                   
                       (* Evaluate lambda abstraction with simplified
                          indexes *)
-                      Term.eval_t 
+                      Term.eval 
                         (simplify_term_node default_of_var uf_defs model)
                         (Term.eval_lambda l i')
                   
@@ -1948,7 +1948,7 @@ let simplify_term_model ?default_of_var uf_defs model term =
   (* Simplify term to a normal form and convert back to a term *)
   let res = 
     term_of_nf
-      (Term.eval_t
+      (Term.eval
          (simplify_term_node default_of_var' uf_defs model) 
          term)
   in

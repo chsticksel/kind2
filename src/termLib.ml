@@ -223,7 +223,7 @@ let logic_of_term t =
   let removed_q = ref false in
   t
   |> Term.map (fun _ -> remove_top_level_quantifier removed_q)
-  |> Term.eval_t logic_of_flat
+  |> Term.eval logic_of_flat
   |> (if !removed_q then FeatureSet.add Q else Lib.identity)
 
 

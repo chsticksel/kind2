@@ -318,7 +318,7 @@ let to_presburger (v: Var.t list) (gf: Term.t) : cformula =
   let res =
 
     (* Bottom-up fold of given term *)
-    Term.eval_t
+    Term.eval
 
       (fun fterm args ->
 

@@ -176,6 +176,13 @@ sig
       equality *)
   val import_sort : sort -> sort
 
+  (** Import an attribute created in another process and restore
+      physical equality *)
+  val import_attr : attr -> attr
+
+  (** Pretty-print a nameless bound variable *)
+  val pp_print_bound_var : Format.formatter -> int -> unit
+    
   (** Pretty-print a symbol *)
   val pp_print_symbol : Format.formatter -> symbol -> unit
 
@@ -286,7 +293,12 @@ sig
       Generates a safe lambda if and only if the term is safe. *)
   val mk_lambda : var list -> 'a t -> 'a lambda
 
-  (** Beta-evaluate a lambda expression
+  (** Beta-evaluate a lambda expression by adding a let binding around
+      the lambda
+
+      The list of terms must be of the same length as the list of
+      variables in the lambda, otherwise the exception
+      [Invalid_argument] is raised.
 
       Generates a safe term only if the lambda is safe, and all values
       are safe. Does not allow mixing safe and unsafe terms as
@@ -416,18 +428,43 @@ sig
   (** Return the unique tag of a hashconsed term *)
   val tag_of_t : 'a t -> int
 
-  (** Evaluate the term bottom-up and right-to-left. The evaluation
-      function is called at each node of the term with the term being
-      evaluated and the list of values computed for the subterms. Let
-      bindings are lazily unfolded.  *)
-  val eval_t : (safe flat -> 'a list -> 'a) -> safe t -> 'a
+  (** Evaluate the term bottom-up and right-to-left. The function is
+      evaluated at each subterm that is a function application and at
+      each constant of the term.
 
-  (** Tail-recursive bottom-up right-to-left map on the term
+      If there are two identical subterms, they will be evaluated
+      twice. No caching is performed. An exception are let bindings:
+      the function is evaluated once for each term assigned to a bound
+      variable at the first occurrence of the bound variable
+      only. That means, each at most once for each term assigned to a
+      bound variable.
+      
+      If the term to be evaluated contains quantifiers the exception
+      [Invalid_argument] is raised.
 
-      Not every subterm is a proper term, since the de Bruijn indexes are
-      shifted. Therefore, the function [f] is called with the number of
-      let bindings the subterm is under as first argument, so that the
-      indexes can be adjusted in the subterm if necessary. *)
+      The first argument on each evaluation is the flat representation
+      of the term being evaluated, the second argument is the result
+      computed for the subterms of the term. *)
+  val eval : (safe flat -> 'a list -> 'a) -> safe t -> 'a
+
+  (** Tail-recursive bottom-up right-to-left map on the term. The
+      function is evaluated at each subterm, including let bindings
+      and quantifiers. No eta-conversion is performed, that is,
+      assignments to bound variables are evaluated regardless whether
+      the bound variable occurs.
+
+      Not every subterm is a proper term, since an occurrence of a
+      bound variable can be refer to a binder outside the subterm,
+      hence the term is unsafe. However, we can give an environment to
+      evaluate the term in. The first two arguments can be passed to
+      {!destruct_unsafe} to obtain a safe term for use in pattern
+      matching.
+
+      If the function returns [None], the subterm is unchanged,
+      otherwise the subterm is replaced by the given term. If the term
+      to substitute contains a bound variable that would make the
+      resulting term non-proper, the exception [Invalid_argument] is
+      raised. *)
   val map : (safe env -> unsafe t -> 'a t option) -> 'b t -> 'b t
 
 (*
@@ -440,7 +477,7 @@ sig
       distributed over the subterms. *)
   val destruct : safe t -> safe flat
 
-  val destruct_unsafe : 'b env -> 'a t -> 'a flat
+  val destruct_unsafe : 'a env -> 'b t -> 'a flat
 
   val instantiate : 'a lambda -> 'a t list -> 'a t
 

@@ -43,7 +43,7 @@ let vars_of_term term =
 
       (* Return variables of term and add variables of all subterms to
          cache *)
-      (Term.eval_t 
+      (Term.eval 
          (function 
            | Term.T.Var v -> 
              (function
@@ -876,7 +876,7 @@ let extract uf_defs env term =
     let stack', term' = 
       (try 
 
-         Term.T.eval_t
+         Term.T.eval
            extract_term_atom_node 
            (Term.T.construct term)
 

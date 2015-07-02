@@ -2229,7 +2229,7 @@ let state_var_of_expr ({ expr_init; expr_step } as expr) =
 (* Return state variables that occur as previous state variables *)
 let stateful_vars_of_expr { expr_step } = 
 
-  Term.eval_t 
+  Term.eval 
     (function 
 
       (* Previous state variables have negative offset *)
