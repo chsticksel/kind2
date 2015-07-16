@@ -23,8 +23,9 @@
 
     You should generally use the functions provided in the {!Term}
     module. The functions provided by this module are more elementary
-    and less safe. See {!Ltree.Make} for the functions that can be
-    accessed as {!Term.T}.
+    and less safe, and in particular allow constructing ill-typed
+    terms. See {!Ltree.Make} for the functions that can be accessed as
+    {!Term.T}.
 
     {1 Implementation Notes} 
 
@@ -293,8 +294,8 @@ sig
       Generates a safe lambda if and only if the term is safe. *)
   val mk_lambda : var list -> 'a t -> 'a lambda
 
-  (** Beta-evaluate a lambda expression by adding a let binding around
-      the lambda
+  (** Beta-evaluate a lambda abstraction by adding a let binding
+      around the lambda, instantiating each bound variables to a term
 
       The list of terms must be of the same length as the list of
       variables in the lambda, otherwise the exception
@@ -414,8 +415,6 @@ sig
   (** Return the name of a named term *)
   val attr_of_t : 'a t -> attr
 
-  (** {2 Iterators} *)
-
   (** Return the node of a hashconsed term *)
   val node_of_t : 'a t -> t_node
 
@@ -427,6 +426,8 @@ sig
 
   (** Return the unique tag of a hashconsed term *)
   val tag_of_t : 'a t -> int
+
+  (** {2 Iterators} *)
 
   (** Evaluate the term bottom-up and right-to-left. The function is
       evaluated at each subterm that is a function application and at
@@ -477,19 +478,26 @@ sig
       distributed over the subterms. *)
   val destruct : safe t -> safe flat
 
-  val destruct_unsafe : 'a env -> 'b t -> 'a flat
+  (** Return the top symbol of a term along with its subterms
 
-  val instantiate : 'a lambda -> 'a t list -> 'a t
+      If the top symbol of a term is a let binding, the binding is
+      distributed over the subterms. *)
+  val destruct_unsafe : 'a env -> 'b t -> 'a flat
 
   (** Convert the flattened representation back into a term *)
   val construct : 'a flat -> 'a t
 
-  (** Return a safe term if possible 
 
-      Fail with [Invalid_argument "safe_of_unsafe"] if there is a
-      bound variable whose binder is not in the term. *)
+  (** Return a safe term if the unsafe term if all bound variables
+      are bound within the term
+      
+      Fail with [Invalid_argument] otherwise *)
   val safe_of_unsafe : 'a t -> safe t
 
+  (** Return an unsafe term of a safe term
+
+      The term is not changed, only its type, and it can be converted
+      back immediately with {!safe_of_unsafe}. *)
   val unsafe_of_safe : 'a t -> unsafe t
 
   (** Import a term into the hashcons table by rebuilding it bottom

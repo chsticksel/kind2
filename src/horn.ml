@@ -129,7 +129,7 @@ let clause_of_expr expr =
 
     (* Instantiate bound variables in lambda abstraction with fresh
        variables *)
-    Term.T.instantiate lambda vars 
+    Term.T.eval_lambda lambda vars 
 
   in
 

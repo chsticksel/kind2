@@ -196,8 +196,6 @@ sig
 
   val destruct_unsafe : 'a env -> 'b t -> 'a flat
 
-  val instantiate : 'a lambda -> 'a t list -> 'a t
-
   val construct : 'a flat -> 'a t
 
   val safe_of_unsafe : 'a t -> safe t
@@ -967,7 +965,10 @@ struct
      We could prune assignments to variables that are not occurring as
      subterms, but that would maybe be unexpected. This would be an \eta
      conversion, which is not necessary. *)
-  let map f term = 
+
+    
+  (* Recursive map *)
+  let rec map' safe f accum = 
 
     (* Add the subterms in reverse order to the instruction stack *)
     let rec push db trees st = match trees with
@@ -977,65 +978,60 @@ struct
 
     (* Ensure bound variables in term do not go outside current
        environment *)
-    let check_res env default = function
+    let check_res env default =
 
-      (* Return default on empty result *)
-      | None -> default
+      function
 
-      (* Get bound variable indexes from term property *)
-      | Some ({ H.prop = { bound_vars } } as res) ->
+        (* Return default on empty result *)
+        | None -> default
+          
+        (* Get bound variable indexes from term property *)
+        | Some ({ H.prop = { bound_vars } } as res) ->
 
-        (* Are all bound variables of term in environment? *)
-        if List.fold_left max 0 bound_vars < List.length env then
+          if not safe then res else 
+            
+            (* Are all bound variables of term in environment? *)
+            if List.fold_left max 0 bound_vars <= List.length env then
 
-          (* Accept result *)
-          res
+              (* Accept result *)
+              res
 
-        else
+            else
 
-          (* Fail because term is not proper *)
-          raise
-            (Invalid_argument
-               "map: term with invalid bound variables")
+               (* Fail because term is not proper *)
+               raise
+                 (Invalid_argument
+                    "map: term with invalid bound variables")
 
     in
-    
-    (* Recursive map *)
-    let rec map (f : safe env -> unsafe t -> 'a t option) accum = function 
 
+    function 
       (* The stack is empty, we are done. The accumulator contains
          exactly one element, which is a singleton list of the result *)
       | [] -> (match accum with [[n]] -> n | _ -> assert false)
 
-      (* Bound variable *)
-      | (env, MTree ({ H.node = BoundVar _ } as n)) :: s ->
-
-        (* Push bound variable unchanged to the accumulator *)
-        (match accum with 
-          | h :: tl -> map f ((n :: h) :: tl) s
-          | _ -> assert false)
-
-      (* Free variable, or constant *)
+      (* Bound variable, free variable, or constant *)
+      | (env, MTree ({ H.node = BoundVar _ } as n)) :: s 
       | (env, MTree ({ H.node = FreeVar _ } as n)) :: s 
       | (env, MTree ({ H.node = App (_, []) } as n)) :: s -> 
 
         (* Apply the function immediately and push result to the
            accumulator *)
         (match accum with 
-          | h :: tl -> map f ((check_res env n (f env n) :: h) :: tl) s
+          | h :: tl -> map' safe f ((check_res env n (f env n) :: h) :: tl) s
           | _ -> assert false)
 
       (* Function application *)
       | (env, MTree { H.node = App (o, a)}) :: s -> 
 
         (* Push symbol and subterms in reverse order to the stack *)
-        map f ([] :: accum) (push env a ((env, MNode o) :: s))
+        map' safe f ([] :: accum) (push env a ((env, MNode o) :: s))
 
       (* Annotated term *)
       | (env, MTree { H.node = Attr (t, a)}) :: s -> 
 
         (* Push annotation and terms to the stack *)
-        map f ([] :: accum) ((env, MTree t) :: (env, MAttr a) :: s)
+        map' safe f ([] :: accum) ((env, MTree t) :: (env, MAttr a) :: s)
 
       (* Let binding *)
       | (env, MTree { H.node = Let ({ H.node = L (x, t)}, b) }) :: s -> 
@@ -1051,7 +1047,8 @@ struct
         (* Push bound subterm with incremented index to the stack,
            followed by the assigned terms and a marker for the let
            binding *)
-        map 
+        map'
+          safe 
           f 
           ([] :: accum) 
           (push env b ((env', MTree t) :: (env, MLet x) :: s)) 
@@ -1070,7 +1067,8 @@ struct
         
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
-        map 
+        map'
+          safe 
           f 
           ([] :: accum) 
           ((env', MTree t) :: (env, MExists x) :: s)
@@ -1089,7 +1087,8 @@ struct
         
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
-        map 
+        map'
+          safe 
           f 
           ([] :: accum) 
           ((env', MTree t) :: (env, MForall x) :: s)
@@ -1103,7 +1102,7 @@ struct
 
             let n' = ht_app op h in
 
-            map f ((check_res env n' (f env n') :: h') :: d) s
+            map' safe f ((check_res env n' (f env n') :: h') :: d) s
               
           | _ -> assert false)
 
@@ -1115,7 +1114,7 @@ struct
           | [h] :: h' :: d ->
 
             let n' = ht_attr h a in
-            map f ((check_res env n' (f env n') :: h') :: d) s
+            map' safe f ((check_res env n' (f env n') :: h') :: d) s
           | _ -> assert false)
 
       (* Let binding *)
@@ -1125,7 +1124,7 @@ struct
         (match accum with 
 
           | (t :: b) :: h' :: d -> 
-            map f ((ht_let (hl_lambda x t) b :: h') :: d) s
+            map' safe f ((ht_let (hl_lambda x t) b :: h') :: d) s
 
           | _ -> assert false)
 
@@ -1138,7 +1137,7 @@ struct
 
             let n' = ht_exists (hl_lambda x t) in
             
-            map f ((check_res env n' (f env n') :: h') :: d) s
+            map' safe f ((check_res env n' (f env n') :: h') :: d) s
 
           | _ -> assert false)
 
@@ -1151,15 +1150,28 @@ struct
 
             let n' = ht_forall (hl_lambda x t) in
             
-            map f ((check_res env n' (f env n') :: h') :: d) s
+            map' safe f ((check_res env n' (f env n') :: h') :: d) s
 
           | _ -> assert false)
 
-    in
+
+  let map f term = 
 
     (* Call recursive function with initial parameters *)
-    map f [[]] [([], MTree term)]
+    map' true f [[]] [([], MTree term)]
 
+  let map_unsafe f term = 
+
+    (* Call recursive function with initial parameters *)
+    map' false f [[]] [([], MTree term)]
+
+
+  let map_with_env safe env f term =
+
+    (* Call recursive function with initial parameters *)
+    map' safe f [[]] [(env, MTree term)]
+
+    
       
   (* ********************************************************************* *)
   (* Evaluate a Term                                                       *)
@@ -1509,8 +1521,12 @@ struct
      in the simultaneous binding, and increment it. *)
   let bind dbm term = 
 
-    map
-
+    map_with_env
+      true
+      (List.map
+         (fun _ -> QuantForall)
+         dbm)
+      
       (function env -> function 
 
          (* Free variable may need to be bound *)
@@ -1522,7 +1538,9 @@ struct
               let dbt = List.assq v dbm in
 
               (* Replace free variable with bound variable *)
-              Some (ht_bound_var (succ (List.length env) + dbt))
+              Some
+                (ht_bound_var
+                   (succ (List.length env) + dbt - (List.length dbm)))
                 
             (* Variable does not need to be bound *)
             with Not_found -> None)
@@ -1550,8 +1568,15 @@ struct
   (* Beta-evaluate a lambda expression *)
   let eval_lambda ({ Hashcons.node = L (v, t) } as l) b = 
 
-    if List.length v = List.length b then ht_let l b else 
-      
+    (* Ensure that number of terms equals number of bound variables *)
+    if List.length v = List.length b then
+
+      (* Bind variables in lambda abstraction to terms *)
+      ht_let l b
+
+    else 
+
+      (* Must fail, or partially evaluate the lambda abstraction *)
       raise (Invalid_argument "eval_lambda")
 
 
@@ -1599,11 +1624,23 @@ struct
     let _, bound_var_map = 
       List.fold_left
         (fun (c, a) i -> 
-           if i > List.length bvar_terms then
-             (c, a) 
-           else
-             (succ c, (i, c) :: a))
-        (1, [])
+
+          (* Variable is not bound in this let *)
+          if i > List.length bvar_terms then
+
+            (* No substitution for bound variable *)
+            (c, a)
+              
+          else
+
+            (
+
+              (* Substitute bound variable with its position in the
+                 list *)
+              (succ c, (i, succ c) :: a)
+
+            ))
+        (0, [])
         bound_vars
     in
 
@@ -1651,17 +1688,18 @@ struct
     (* Adjust indexes of all variables according to the map *)
     let term_adjust_bound_indexes bound_var_map term =
 
-      map
+      
+      map_unsafe
 
         (fun env -> function
 
            (* May need to change the index of a bound variable *)
            | { H.node = BoundVar i } -> 
 
+             let o = List.length env in
+                  
              (try 
 
-                let o = List.length env in
-                  
                 (* Bound variable is bound outside this let binding? *)
                 if i > o + List.length bvar_terms then
 
@@ -1685,8 +1723,8 @@ struct
                 (* Keep variables bound inside the term *)
                 else None
 
-              (* Every variable in the term the is bound outside has a
-                 new index *)
+              (* Every variable in the term that is not bound outside
+                 has a new index *)
               with Not_found -> assert false)
 
            (* Keep terms other than bound variables unchanged *)
@@ -1977,23 +2015,77 @@ struct
     | _ -> assert false
 
 
-  let destruct_unsafe _ = destruct
+  let rec destruct_unsafe env = function
 
+    (* Bound variable *)
+    | { H.node = BoundVar i } ->
 
-  let instantiate l b = ht_let l b
+      (* Get assignment to bound variable *)
+      (match List.nth env i with
 
+        (* Variable is bound to a term *)
+        | Subst (term', env') ->
+
+          (* Substitute term and destruct *)
+          destruct_unsafe env' term'
+
+        (* Variable is bound by a quantifier *)
+        | QuantForall
+        | QuantExists ->
+
+          raise (Invalid_argument "destruct_unsafe: quantified term")
+            
+        (* Bound variable is not in environemt *)
+        | exception Invalid_argument _ ->
+
+          (* Fail *)
+          raise (Invalid_argument "destruct_unsafe: bound variable"))
+
+    (* Term is a free variable or eta-evaluates to one *)
+    | { H.node = FreeVar v } 
+    | { H.node = Let ({ H.node = L (_, { H.node = FreeVar v }) }, _) } -> Var v
+
+    (* Term is a function application *)
+    | { H.node = App (s, l) } -> App (s, l)
+
+    (* Existentially quantified term *)
+    | { H.node = Exists l } -> Exists l
+
+    (* Univerally quantified term *)
+    | { H.node = Forall l } -> Forall l
+
+    (* Annotated term *)
+    | { H.node = Attr (t, a) } -> Attr (t, a)
+
+    (* Univerally quantified term *)
+    | { H.node = Let _ } -> assert false
       
+
+    
+  (* Return a safe term of an unsafe term if all bound variables are
+     bound within the term *)
   let safe_of_unsafe t = 
 
     map
 
       (fun env -> function 
       
-        (* Fail if index of bound variable greater than number of
-           lambda bindings *)
+        (* Need to make sure that bound variable index is referencing
+           a binder in the term *)
         | { H.node = BoundVar j } ->
 
-          assert (List.length env >= j); None
+          (* Is index of bound variable greater than number of lambda
+             bindings *)
+          if List.length env >= j then
+
+            (* Fail *)
+            raise
+              (Invalid_argument
+                 "safe_of_unsafe: variable bound outside term")
+          else
+
+            (* Accept *)
+            None
             
         (* Keep term otherwise *)
         | t -> None)
@@ -2061,6 +2153,72 @@ struct
     
 end
 
+
+(* Directives for toplevel testing
+
+#use "topfind";;
+#require "unix";;
+#thread;;
+
+#mod_use "hashcons.ml";;
+#mod_use "hString.ml";;
+#mod_use "kind2Config.ml";;
+#mod_use "version.ml";;
+#mod_use "lib.ml";;
+
+*)
+
+  
+module TestTypes =
+struct
+  type symbol = char
+  type var = int
+  type sort = unit
+  type attr = unit
+
+  let hash_of_symbol = Hashtbl.hash
+  let hash_of_var = Hashtbl.hash
+  let hash_of_sort = Hashtbl.hash
+  let hash_of_attr = Hashtbl.hash
+  let sort_of_var _ = ()
+  let import_symbol s = s
+  let import_var s = s
+  let import_sort s = s
+  let import_attr s = s
+  let pp_print_bound_var ppf i = Format.fprintf ppf "X%i" i
+  let pp_print_symbol = Format.pp_print_char
+  let pp_print_var = Format.pp_print_int
+  let pp_print_sort ppf _ = Format.fprintf ppf "()"
+  let pp_print_attr ppf _ = Format.fprintf ppf "()"
+    
+end
+  
+module T = Make (TestTypes)
+
+;;
+
+let print_term t = Format.printf "%a@." (T.pp_print_term ~db:0) t 
+
+
+let f_12 = T.mk_app 'f' [(T.mk_var 1); (T.mk_var 2)] 
+
+let t1 =
+  T.mk_let_elim
+    [(0, T.mk_app 'o' []);
+     (1, T.mk_app 'a' []);
+     (0, T.mk_app 'o' []);
+     (2, T.mk_app 'b' []);
+     (0, T.mk_app 'o' [])]
+    f_12
+
+let () = print_term t1
+
+let t2 = T.mk_let_elim [(1, T.mk_app 'a' [])] f_12 |> T.mk_let [(2, T.mk_app 'b' [])] 
+
+let () = print_term t2
+
+
+  
 (* 
    Local Variables:
    compile-command: "make -C .. -k"

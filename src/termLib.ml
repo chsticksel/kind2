@@ -111,7 +111,7 @@ let remove_top_level_quantifier removed (t : Term.T.unsafe Term.T.t) =
     |> List.map (fun t ->
         (UfSymbol.mk_fresh_uf_symbol [] t
          |> Term.mk_uf) @@ [] |> Term.T.unsafe_of_safe)
-    |> Term.T.instantiate lam
+    |> Term.T.eval_lambda lam
   in
 
   if Term.T.is_exists t then 
