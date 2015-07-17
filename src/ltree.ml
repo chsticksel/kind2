@@ -152,9 +152,9 @@ sig
 
   val is_bound_var : 'a t -> bool
 
-  val is_leaf : 'a t -> bool
+  val is_const : 'a t -> bool
 
-  val leaf_of_t : 'a t -> symbol
+  val const_of_t : 'a t -> symbol
 
   val is_app : 'a t -> bool
 
@@ -191,6 +191,8 @@ sig
   val map : (safe env -> unsafe t -> 'a t option) -> 'b t -> 'b t
 (*
   val map_top : (safe env -> unsafe flat -> 'a t option) -> 'b t -> 'b t
+
+  val fold : (safe env -> unsafe t -> 'a list -> 'a) -> 'b t -> 'a
 *)
   val destruct : safe t -> safe flat
 
@@ -702,7 +704,9 @@ struct
       let db' = succ db in 
 
       (* Print variable for de Bruijn index and its type *)
-      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" T.pp_print_bound_var db' T.pp_print_sort t;
+      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" 
+        T.pp_print_bound_var db' 
+        T.pp_print_sort t;
 
       (* Continue if not at the end of the list *)
       if not (tl = []) then 
@@ -723,7 +727,9 @@ struct
       let db' = succ db in
 
       (* Print variable as (Xn t) *)
-      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" T.pp_print_bound_var db' T.pp_print_sort s;
+      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" 
+        T.pp_print_bound_var db' 
+        T.pp_print_sort s;
 
       (* Add space and recurse if more bindings follow *)
       if not (tl = []) then 
@@ -770,11 +776,12 @@ struct
          pp_print_let_bindings pp_symbol (succ i) db' ppf tl)
 
 
-  (* Pretty-print a higer-order abstract syntax term given the de
-     Bruijn index of the most recent bound variable *)
+  (* Pretty-print an abstract term given the de Bruijn index of the
+     most recent bound variable *)
   and pp_print_term' pp_symbol db ppf = function 
 
-    (* Delegate printing of free variables to function in input module *)
+    (* Delegate printing of free variables to function in input
+       module *)
     | { H.node = FreeVar v } -> T.pp_print_var ppf v
 
     (* Print bound variable with its de Bruijn index *)
@@ -782,7 +789,7 @@ struct
 
       Format.fprintf ppf "%a" T.pp_print_bound_var (db - dbv + 1)
 
-    (* Delegate printing of leaf to function in input module *)
+    (* Delegate printing of constant to function in input module *)
     | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
 
     (* Print a function application as S-expression *)
@@ -826,8 +833,8 @@ struct
         T.pp_print_attr a
 
 
-  (* Pretty-print a list of higher-order abstract syntax terms given
-     the de Bruijn index of the most recent bound variable *)
+  (* Pretty-print a list of abstract terms given the de Bruijn index
+     of the most recent bound variable *)
   and pp_print_term_list pp_symbol db ppf = function
 
     (* Terminate at end of list *)
@@ -859,44 +866,20 @@ struct
     (* Pretty-print term into buffer *)
     pp_print_lambda' pp_symbol db ppf term
 
- 
-  
+
+  (* Pretty-print a term *)
   let pp_print_term = pp_print_term_w (fun ?arity -> T.pp_print_symbol)
 
+
+  (* Pretty-print a term to the standard formatter *)
   let print_term ?db = pp_print_term ?db Format.std_formatter
 
+  (* Pretty-print a lambda abstraction *)
   let pp_print_lambda = pp_print_lambda_w (fun ?arity -> T.pp_print_symbol)
 
+
+  (* Pretty-print a lambda abstraction to the standard formatter *)
   let print_lambda ?db = pp_print_lambda ?db Format.std_formatter
-
-
-  (* Pretty-print a flattened term *)
-  let rec pp_print_flat pp_symbol ppf = function 
-
-    | Var v -> Format.fprintf ppf "Var@ %a" T.pp_print_var v
-
-    | App (s, []) -> Format.fprintf ppf "Const@ %a" (pp_symbol ?arity:(Some 0)) s
-
-    | App (s, l) ->
-
-      Format.fprintf 
-        ppf 
-        "App@ (%a,@ %a)" 
-        (pp_symbol ?arity:None) s 
-        (pp_print_term_list pp_symbol 0) l
-
-    | Exists _
-    | Forall _ -> assert false 
-        
-    | Attr (t, a) -> 
-
-      Format.fprintf 
-        ppf 
-        "Attr@ (%a,@ %a)" 
-        (pp_print_term ~db:0) t 
-        T.pp_print_attr a
-
-  let pp_print_flat = pp_print_flat (fun ?arity -> T.pp_print_symbol)
 
     
   (* ********************************************************************* *)
@@ -908,6 +891,7 @@ struct
   let rec int_seq' a s = function 
     | 0 -> a
     | i -> int_seq' (s :: a)  (pred s) (pred i)
+
 
   (* [int_seq s n] returns a sequence of [n] integers starting with
      [s] *)
@@ -922,7 +906,7 @@ struct
   (* Elements on the instruction stack *)
   type 'a mapstack =
     | MTree of 'a t
-    | MNode of symbol
+    | MApp of symbol
     | MLet of sort list
     | MExists of sort list
     | MForall of sort list
@@ -949,7 +933,7 @@ struct
 
      - The stack contains one of five values. A [MTtree t] value maps
      the subterms of [t] and pushes the result onto the accumulator. An
-     [MNode s] value takes the list of values of its subterms from the
+     [MApp s] value takes the list of values of its subterms from the
      result stack and evaluates these for the top symbol [s]. An [MLet
      x] value takes one value from the accumulator and binds it with the
      variables [x] to the next values from the accumulator. Similarly,
@@ -976,21 +960,25 @@ struct
       | h :: t -> push db t ((db, MTree h) :: st)
     in
 
-    (* Ensure bound variables in term do not go outside current
-       environment *)
-    let check_res env default =
+    (* Evaluate function and check result *)
+    let f_and_check env n = 
 
-      function
+      (* Ensure bound variables in term do not go outside current
+         environment *)
+      let check_res env default =
 
-        (* Return default on empty result *)
-        | None -> default
-          
-        (* Get bound variable indexes from term property *)
-        | Some ({ H.prop = { bound_vars } } as res) ->
+        function
 
-          if not safe then res else 
-            
-            (* Are all bound variables of term in environment? *)
+          (* Return default on empty result *)
+          | None -> default
+
+          (* Get bound variable indexes from term property *)
+          | Some ({ H.prop = { bound_vars } } as res) ->
+
+            (* Skip check if disabled *)
+            if not safe then res else 
+
+              (* Are all bound variables of term in environment? *)
             if List.fold_left max 0 bound_vars <= List.length env then
 
               (* Accept result *)
@@ -998,16 +986,23 @@ struct
 
             else
 
-               (* Fail because term is not proper *)
-               raise
-                 (Invalid_argument
-                    "map: term with invalid bound variables")
+              (* Fail because term is not proper *)
+              raise
+                (Invalid_argument
+                   "map: term with invalid bound variables")
+
+      in
+
+      (* Evaluate function, then check result *)
+      f env n |> check_res env n 
 
     in
 
     function 
+
       (* The stack is empty, we are done. The accumulator contains
-         exactly one element, which is a singleton list of the result *)
+         exactly one element, which is a singleton list of the
+         result *)
       | [] -> (match accum with [[n]] -> n | _ -> assert false)
 
       (* Bound variable, free variable, or constant *)
@@ -1018,14 +1013,14 @@ struct
         (* Apply the function immediately and push result to the
            accumulator *)
         (match accum with 
-          | h :: tl -> map' safe f ((check_res env n (f env n) :: h) :: tl) s
+          | h :: tl -> map' safe f (((f_and_check env n) :: h) :: tl) s
           | _ -> assert false)
 
       (* Function application *)
       | (env, MTree { H.node = App (o, a)}) :: s -> 
 
         (* Push symbol and subterms in reverse order to the stack *)
-        map' safe f ([] :: accum) (push env a ((env, MNode o) :: s))
+        map' safe f ([] :: accum) (push env a ((env, MApp o) :: s))
 
       (* Annotated term *)
       | (env, MTree { H.node = Attr (t, a)}) :: s -> 
@@ -1043,7 +1038,7 @@ struct
             env
             b
         in
-        
+
         (* Push bound subterm with incremented index to the stack,
            followed by the assigned terms and a marker for the let
            binding *)
@@ -1064,7 +1059,7 @@ struct
             env
             x
         in
-        
+
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
         map'
@@ -1084,7 +1079,7 @@ struct
             env
             x
         in
-        
+
         (* Push quantified term to the stack followed by a marker for
            the quantifier *)
         map'
@@ -1094,7 +1089,7 @@ struct
           ((env', MTree t) :: (env, MForall x) :: s)
 
       (* Function application *)
-      | (env, MNode op) :: s -> 
+      | (env, MApp op) :: s -> 
 
         (* Rebuild function application with mapped subterms *)
         (match accum with 
@@ -1102,8 +1097,8 @@ struct
 
             let n' = ht_app op h in
 
-            map' safe f ((check_res env n' (f env n') :: h') :: d) s
-              
+            map' safe f ((f_and_check env n' :: h') :: d) s
+
           | _ -> assert false)
 
       (* Annotation *)
@@ -1114,7 +1109,7 @@ struct
           | [h] :: h' :: d ->
 
             let n' = ht_attr h a in
-            map' safe f ((check_res env n' (f env n') :: h') :: d) s
+            map' safe f ((f_and_check env n' :: h') :: d) s
           | _ -> assert false)
 
       (* Let binding *)
@@ -1128,6 +1123,7 @@ struct
 
           | _ -> assert false)
 
+      (* Existential quantifier *)
       | (env, MExists x) :: s -> 
 
         (* Rebuild existential quantification with mapped subterm *)
@@ -1136,11 +1132,12 @@ struct
           | [t] :: h' :: d ->
 
             let n' = ht_exists (hl_lambda x t) in
-            
-            map' safe f ((check_res env n' (f env n') :: h') :: d) s
+
+            map' safe f ((f_and_check env n' :: h') :: d) s
 
           | _ -> assert false)
 
+      (* Universal quantifier *)
       | (env, MForall x) :: s -> 
 
         (* Rebuild universal quantification with mapped subterm *)
@@ -1149,8 +1146,8 @@ struct
           | [t] :: h' :: d ->
 
             let n' = ht_forall (hl_lambda x t) in
-            
-            map' safe f ((check_res env n' (f env n') :: h') :: d) s
+
+            map' safe f ((f_and_check env n' :: h') :: d) s
 
           | _ -> assert false)
 
@@ -1194,7 +1191,7 @@ struct
     | ETree of int * 'a t 
 
     (* Combine evaluated arguments from the result stack *)
-    | ENode of 'b * 'a t list
+    | EApp of 'b * 'a t list
 
     (* Pop [n] substitutions from the context *)
     | EPop of int 
@@ -1215,7 +1212,7 @@ struct
 
      - The instruction stack contains one of four values. An [ETree t]
      value evaluates the subterms of [t] and pushes the result onto the
-     result stack. An [ENode s] value takes the list of values of its
+     result stack. An [EApp s] value takes the list of values of its
      subterms from the result stack and evaluates these for the top
      symbol [s]. An [ECtx i] value takes the top element of the result
      stack, which is the value of the variable [i] and replaces the
@@ -1234,19 +1231,14 @@ struct
     (* The stack is empty, we are done *)
     | [] -> 
 
-      (
-
-        (* When we are done the accumulator contains exactly one
-           element, which is a singleton list of the result *)
-        match accum with 
-          | [[(_, res)]] -> res
-          | _ -> assert false
-
-      )
+      (* When we are done the accumulator contains exactly one
+         element, which is a singleton list of the result *)
+      (match accum with | [[(_, res)]] -> res | _ -> assert false)
 
     (* The top element of the stack is a constant *)
     | ETree (_, { H.node = App (op, []) }) :: tl -> 
 
+      (* Construct flat term *)
       let t = App (op, []) in
 
       (* Apply function to constant and continue with result *)
@@ -1257,6 +1249,7 @@ struct
     (* The top element of the stack is a free variable *)
     | ETree (_, { H.node = FreeVar v }) :: tl -> 
 
+      (* Construct flat term *)
       let t = Var v in 
 
       (* Apply function to variable and continue with result *)
@@ -1276,7 +1269,7 @@ struct
 
       (* Add an empty list to the result stack, and the subterms to
          the instruction stack followed by the symbol *)
-      eval' f subst ([] :: accum) (push args (ENode (op, args) :: tl))
+      eval' f subst ([] :: accum) (push args (EApp (op, args) :: tl))
 
     (* The top element of the stack is an annotated term *)
     | ETree (db, { H.node = Attr (t, _) }) :: tl -> 
@@ -1373,7 +1366,7 @@ struct
     | ETree (_, { H.node = Forall _ }) :: tl -> invalid_arg "Quantified term"
 
     (* The top element of the instruction stack is a symbol *)
-    | ENode (op, args) :: tl -> 
+    | EApp (op, args) :: tl -> 
 
       (
 
@@ -1840,16 +1833,16 @@ struct
     | _ -> false 
 
 
-  (* Return true if the term is a leaf symbol *)
-  let is_leaf : 'a t -> bool = function
+  (* Return true if the term is a constant symbol *)
+  let is_const : 'a t -> bool = function
     | { H.node = App (_, []) } -> true 
     | _ -> false 
 
 
-  (* Return the symbol of a leaf term *)
-  let leaf_of_t : 'a t -> symbol = function
+  (* Return the symbol of a constant term *)
+  let const_of_t : 'a t -> symbol = function
     | { H.node = App (s, []) } -> s
-    | _ -> invalid_arg "leaf_of_t"
+    | _ -> invalid_arg "const_of_t"
 
 
   (* Return true if the term is a function application *)

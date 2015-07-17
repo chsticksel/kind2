@@ -21,36 +21,118 @@
     An abstract term extends a basic first-order term structure with
     let bindings and existential and universal quantifiers. 
 
-    You should generally use the functions provided in the {!Term}
-    module. The functions provided by this module are more elementary
-    and less safe, and in particular allow constructing ill-typed
-    terms. See {!Ltree.Make} for the functions that can be accessed as
-    {!Term.T}.
+    You should use the functions provided in the {!Term} module. The
+    functions provided by this module are more elementary and not
+    necessarily safe. In particular one may construct ill-typed terms,
+    or even terms that are ill-formed regarding bound variables. See
+    {!Ltree.Make} for the functions that can be accessed as {!Term.T}.
 
-    {1 Implementation Notes} 
-
-    {2 Functorial Interface} 
-
-    The abstract term is parametrized by the four types of symbols,
-    free variables, sorts and attributes, which are paramters to the
-    {!Make} functor. Physical equality [(==)] on the types
-    {!BaseTypes.symbol} {!BaseTypes.var}, {!BaseTypes.sort}, and also
-    {!BaseTypes.attr} must imply structural equality [(=)]. This may
-    be achieved by using the {!Hashcons} module. Note that it is also
-    required to be able to compare attributes with physical equality.
+    {1 Usage}
 
     Values of types {!S.t} and {!S.lambda} are private hash-consed
     phantom types. That means they can only be constructed with their
-    respective constructors and not outside the module to preserve
-    invariants. Structural equality and physical equality are
-    equivalent, thus physical equality [(==)] can always be used in
-    place of structural equality [(=)]. The types have a parameter
-    ['a] that is instantiated either to the type {!S.safe} or
-    {!S.unsafe}, indicating if the term is a proper term.
+    respective constructors in order to preserve invariants about
+    their structure. Structural equality and physical equality are
+    equivalent, thus physical equality [(==)] on {!S.t} and
+    {!S.lambda} can always be used in place of structural equality
+    [(=)].
 
-    {2 deBruijn Indexes} 
-    
-    We use deBruijn indexes in reverse to do nameless abstraction for
+    A term {!S.t} is a first-order structure over a signature of
+    symbols {!S.symbol} and free variables {!S.var}. A constant is a
+    function application with an empty list of arguments. A bound
+    variable is bound to exactly one lambda abstraction {!S.lambda}. A
+    lambda abstraction may bind several variables
+    simultaneously. Terms contain lambda abstractions either as let
+    bindings, or as universal or existential quantifiers. One can
+    attach an attribute to a term, this constructs a new term that is
+    different from the under the attribute.
+
+    {2 Constructors}
+
+    Construct a term with the functions {!S.mk_var}, {!S.mk_const},
+    {!S.mk_app}, {!S.mk_let}, {!S.mk_exists}, {!S.mk_forall}, and
+    {!S.mk_attr}. The constructor {!S.mk_const} is an alias for
+    {!S.mk_app} with an empty list of arguments.
+
+    There is neither type checking nor checking of arity constraints
+    of symbols in this module. To enable typing in higher modules,
+    every bound variable is annotated with a type {!S.sort}. Typing
+    rules can then be implemented on higer levels, making use of
+    typing rules for free variables {!S.var} and typing rules based on
+    the signature {!S.symbol}.
+
+    {2 Accessing Terms} 
+
+    To distinguish the type of a term, use the predicates
+    {!S.is_free_var}, {!S.is_bound_var}, {!S.is_const}, {!S.is_app},
+    {!S.is_let}, {!S.is_exists}, {!S.is_forall} and {!S.is_attr}, or
+    the function {!S.node_of_t} followed by a pattern matching on the
+    type {!S.t_node}. There are also accessors {!S.free_var_of_t},
+    {!S.const_of_t}, {!S.app_symbol_of_t}, {!S.app_args_of_t},
+    {!S.lambda_of_exists}, {!S.lambda_of_forall}, {!S.attr_of_t}, and
+    {!S.attr_t_of_t}. The accessors will fail with [Invalid_argument]
+    if applied to the wrong kind of term.
+
+    Alternatively, use the function {!S.destruct}, which evaluates a
+    term to a flat term of type {!S.flat}, where no let bindings
+    exists at the top of the term. Let bindings are distributed over
+    function applications, no bound variables will ever be visible at
+    the top level of a flat term. Quantifiers cannot be eliminated,
+    hence a flat term may contain a quantifier at the top. Values of
+    type {!t.flat} are not perfectly shared, hence two values may be
+    structurally equalt but not physically.
+
+    {2 Quantifiers} 
+
+    To instantiate a quantifier, obtain the lambda abstraction of the
+    quantifier with {!S.lambda_of_exists} or {!S.lambda_of_forall},and
+    use the function {!S.eval_lambda} to instantiate the bound
+    variable to a particular term.
+
+    {2 Iterators}
+
+    Finally, there are tail-recursive iterators and evaluators for
+    terms {!S.map}, {!S.map_top}, {!S.fold}, and {!S.eval}.
+
+    The function {!S.map} constructs a new term by applying a given
+    function [f] to each subterm bottom-up and right to left. Not
+    every subterm is a proper term, because it may contain a bound
+    variable but not its binder. Therefore, the function [f] is given
+    an environment in its first argument that can be passed to
+    {!S.destruct_unsafe} to obtain a flat term as with
+    {!S.destruct}. The function [f] may return [None] to keep the
+    subterm unchanged, or [Some t] to replace the subterm with
+    [t]. The term [t] to replace the subterm must not contain bound
+    variables that are not bound inside the term. If it does, the
+    exception [Invalid_argument] is raised.
+
+    The function {!S.map_top} constructs a new term by applying the
+    function [f] to each subterm top-down and right to left. As with
+    {!S.map} the function [f] is evaluated with an environment as
+    first argument to enable {!S.destruct_unsafe}. If the function [f]
+    returns [None], the subterm is unchanged and its subterms are
+    considered. If the function returns [Some t], the subterm is
+    replaced by [t], without further considering its subterms.
+
+    The function {!S.eval} reduces the term to a value by
+    instantiating each let binding and applying the function [f] to
+    each subterm. 
+
+    The function {!S.fold} reduces the term to a value in a similar
+    way as {!S.eval} except that let bindings are not evaluated, and
+    quantified terms are allowed. The function [f] is presented with
+    each subterm bottom-up and right to left in the same way as
+    {!S.map}, where [f] is evaluated with the list of evaluating the
+    subterms in the third argument similar to {!S.eval}.
+
+    {1 Implementation Notes} 
+
+    The types have a parameter ['a] that is instantiated either to the
+    type {!S.safe} or {!S.unsafe}, indicating if the term is a proper
+    term. A term is proper if it contains the binder for every bound
+    variable.
+
+    We use de Bruijn indexes in reverse to do nameless abstraction for
     bound variables. The variable with index [i] is bound to the
     [i]-th lambda abstraction counted upwards the parse tree from the
     occurrence of the variable:
@@ -73,81 +155,51 @@
 
     In
 
-    {[ \. (f x1 \. (g x2 a)) ]}
+    {[ \_. (f x1 \_. (g x2 a)) ]}
 
     both [x1] and [x2] are bound to the outermost lambda. Abstracting
     the constant [a] to a fresh bound variable results in
 
-    {[ \. (\. (f x1 \. (g x2 x3))) ]}
+    {[ \_. (\_. (f x1 \_. (g x2 x3))) ]}
 
     where the indexes of [x1] and [x2] are unchanged and the two terms
     share as many subterms as possible.
 
-    {1 Old Notes}
+    If a lambda abstraction binds several variables simultaneously,
+    the first element in the list binds the first bound variable. 
 
-    A basic term is 
+    {[ \_ _. (f x1 x2) ]}
 
-    - a constant {!Leaf}
-    - a 
+    The bound variable [x1] is bound by the leftmost variable in the
+    lambda abstraction, [x2] by the rightmost.
 
+    {2 Functorial Interface} 
 
-
-    A basic term is a tree structure, where a term is either a leaf
-    containing a symbol or a variable. A term can also be a node
-    containing a symbol with one or more subterms. All symbols are
-    variadic and arity constraints are not checked or enforced in this
-    module.
-
-    For let bindings and quantifiers we add typed lambda abstractions
-    and distinguish between free and bound variables. A typed lambda
-    abstraction is a term where one or more variables are bound. We do
-    nameless abstraction with de Bruijn indexes, hence a bound
-    variables is just its index, whereas free variables are values of
-    the type of free variables.
-
-    A let binding is a lambda abstraction of [n] bound variables
-    together with [n] terms that are to be substituted for the bound
-    variables. Quantifiers are just lambda abstractions. 
-
-    In order to maintain invariants about de Bruijn indexes, the type
-    of an abstract syntax term is private to this module and terms
-    must be created with the appropriate constructors.
-
-    In addition, there is a type of flat terms, where the topmost let
-    binding has been evaluated. An abstract syntax term can be
-    converted to a flat term with the {!S.destruct} function, which
-    distributes let bindings over nodes and ensures that the top
-    symbols of the term is a node, a leaf or a variable. Subterms of a
-    nodes are abstract syntax terms with binders and {!S.destruct} can
-    be repeatedly applied to these subterms.
-
-    Tail-recursive fold and map functions are provided. The
-    {!S.eval_t} function presents the subterms bottom-up and
-    right-to-left to the folding function and lazily evaluates all let
-    bindings. It fails when the term contains quantifiers. The
-    {!S.map} function presents all subterms to the function, again
-    bottom-up and right-to-left, let bindings are not unfolded. Hence,
-    not every subterm is a proper abstract syntax term and the mapping
-    function is given the number of let binding the subterm is under
-    as an argument.
+    The abstract term is parametrized by the four types of symbols,
+    free variables, sorts and attributes, which are paramters to the
+    {!Make} functor. The four types {!BaseTypes.symbol}
+    {!BaseTypes.var}, {!BaseTypes.sort}, and also {!BaseTypes.attr}
+    must be perfectly shared, that is structural equality [(=)] must
+    imply physical equality [(==)]. This may be achieved by using the
+    {!Hashcons} module. 
 
     @author Christoph Sticksel *)
 
 
-(** Input signature for functor *)
+(** Input signature for functor {!S.Make} *)
 module type BaseTypes =
 sig
 
-  (** Symbol *)
+  (** Symbol in the signature *)
   type symbol
   
-  (** Variable *)
+  (** Variable in the signature *)
   type var
     
-  (** Sort *)
+  (** Type of a term *)
   type sort
 
-  (** Attribute *)
+  (** Attribute of a term *)
   type attr
 
   (** Hash value of a symbol *)
@@ -198,22 +250,22 @@ sig
 
 end
 
-(** Output signature of functor *)
+(** Output signature of functor {!S.Make} *)
 module type S =
 sig
 
   (** {1 Type Definitions} *)
 
-  (** Symbol *)
+  (** Symbol in the signature *)
   type symbol
 
-  (** Variable *)
+  (** Variable in the signature*)
   type var
 
-  (** Sort *)
+  (** Type of a term *)
   type sort
 
-  (** Attribute *)
+  (** Attribute of a term *)
   type attr
 
   (** Types to instantiate the phantom type paramter
@@ -232,7 +284,7 @@ sig
   (** Hashconsed lambda abstraction *)
   and lambda_t = private (lambda_node, unit) Hashcons.hash_consed
 
-  (** Lambda abstraction with a phantom type *)
+  (** Lambda abstraction with a phantom type signaling its safeness *)
   and 'a lambda = private lambda_t
 
   (** Term over symbols, variables and sort of the types given. Values
@@ -249,13 +301,17 @@ sig
     | Forall of lambda_t
     | Attr of t_t * attr
 
-  (** Properties of a term *)
+  (** Properties of a term
+
+      [bounds_vars] is the sorted list of the indexes of bound
+      variables in the term. This value is computed when constructing
+      the term and used instead of recomputing it every time. *)
   and t_prop = private { bound_vars : int list } 
 
   (** Hashconsed term *)
   and t_t = private (t_node, t_prop) Hashcons.hash_consed
 
-  (** Term with a phantom type *)
+  (** Term with a phantom type signaling its safeness *)
   and 'a t = private t_t 
 
   (** Enviroment containing bindings for variables to destruct an
@@ -263,9 +319,7 @@ sig
   type 'a env
 
   (** Term over symbols, variables and sort of the types given where
-      the topmost symbol is not a binder
-
-  *)
+      the topmost symbol is not a binder *)
   type 'a flat = private 
     | Var of var
     | App of symbol * 'a t list
@@ -310,13 +364,13 @@ sig
   (** Construct a term of a free variable
 
       Always generates a safe term, because there are no bound
-      variables in a leaf. *)
+      variables in a variable. *)
   val mk_var : var -> 'a t
 
   (** Construct a term of a constant symbol
 
       Always generates a safe term, because there are no bound
-      variables in a leaf. The arity of the symbol is not checked. *)
+      variables in a constant. The arity of the symbol is not checked. *)
   val mk_const : symbol -> 'a t
 
   (** Apply the function symbol to the arguments 
@@ -376,11 +430,11 @@ sig
   (** Return [true] if the term is a bound variable *)
   val is_bound_var : 'a t -> bool
 
-  (** Return [true] if the term is a leaf symbol *)
-  val is_leaf : 'a t -> bool
+  (** Return [true] if the term is a constant *)
+  val is_const : 'a t -> bool
 
-  (** Return the symbol of a leaf term *)
-  val leaf_of_t : 'a t -> symbol
+  (** Return the symbol of a constant term *)
+  val const_of_t : 'a t -> symbol
 
   (** Return [true] if the term is a function application *)
   val is_app : 'a t -> bool
@@ -427,11 +481,12 @@ sig
   (** Return the unique tag of a hashconsed term *)
   val tag_of_t : 'a t -> int
 
-  (** {2 Iterators} *)
+  (** {2 Iterators and Evaluators} *)
 
   (** Evaluate the term bottom-up and right-to-left. The function is
       evaluated at each subterm that is a function application and at
-      each constant of the term.
+      each constant of the term. If the term to be evaluated contains
+      quantifiers the exception [Invalid_argument] is raised.
 
       If there are two identical subterms, they will be evaluated
       twice. No caching is performed. An exception are let bindings:
@@ -439,9 +494,6 @@ sig
       variable at the first occurrence of the bound variable
       only. That means, each at most once for each term assigned to a
       bound variable.
-      
-      If the term to be evaluated contains quantifiers the exception
-      [Invalid_argument] is raised.
 
       The first argument on each evaluation is the flat representation
       of the term being evaluated, the second argument is the result
