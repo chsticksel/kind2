@@ -1,0 +1,9 @@
+#use "topfind";;
+#require "unix";;
+#thread;;
+
+#mod_use "hashcons.ml";;
+#mod_use "hString.ml";;
+#mod_use "kind2Config.ml";;
+#mod_use "version.ml";;
+#mod_use "lib.ml";;
