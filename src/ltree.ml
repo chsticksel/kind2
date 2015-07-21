@@ -208,19 +208,19 @@ sig
 
   val import_lambda : 'a lambda -> 'a lambda
 
-  val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
+  val pp_print_term : Format.formatter -> 'a t -> unit
     
   val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> 'a lambda -> unit
+    Format.formatter -> 'a lambda -> unit
 
   val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> 'a t -> unit
+    Format.formatter -> 'a t -> unit
 
-  val print_term : ?db:int -> 'a t -> unit
+  val print_term : 'a t -> unit
 
-  val pp_print_lambda : ?db:int -> Format.formatter -> 'a lambda -> unit
+  val pp_print_lambda : Format.formatter -> 'a lambda -> unit
     
-  val print_lambda : ?db:int -> 'a lambda -> unit
+  val print_lambda : 'a lambda -> unit
 
   val stats : unit -> int * int * int * int * int * int
 
@@ -691,31 +691,42 @@ struct
   (* Pretty-printing                                                       *)
   (* ********************************************************************* *)
 
-  (* Print pairs of fresh variable names and types, starting with the
-     given de Bruijn index *)
-  let rec pp_print_var_seq db ppf = function 
+  (* The first variable in a list of simultaneous binders is closest,
+     but we want to display the list of variables in the original
+     order with indexes numbered ascending. Therefore, we keep a list
+     of indexes that gives the forward index for each bound
+     variable. The bound variable with reverse index [i] is at
+     position [i-1] in the list. When recursing into a lambda
+     abstraction, add the simultaneous binders to the list in original
+     order:
 
-    (* Terminate at end of list *)
-    | [] -> ()
+     {[ \_. \_ _. (f X1 X2 X3) ]} 
 
-    | t :: tl -> 
+     is to be displayed as 
 
-      (* Increment de Bruijn index *)
-      let db' = succ db in 
+     {[ (lambda ((Y1 _)) (lambda ((Y2 _) (Y3 -)) (f Y2 Y3 Y1))) ]} 
 
-      (* Print variable for de Bruijn index and its type *)
-      Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" 
-        T.pp_print_bound_var db' 
-        T.pp_print_sort t;
+     This means we consult the list
 
-      (* Continue if not at the end of the list *)
-      if not (tl = []) then 
-        (Format.pp_print_space ppf (); 
-         pp_print_var_seq db' ppf tl)
+     {[\[Y2; Y3; Y1\]]} 
+
+     to map the indexes in the term to the forward indexes for
+     display. *)
+
+
+  (* Recursively add the given number of simultaneous bindings *)
+  let rec add_to_fwd_db_map' l db = function 
+    | 0 -> db
+    | i -> add_to_fwd_db_map' l (i + l :: db) (pred i)
+
+  (* Add the given number of simultaneous bindings to the map *)
+  let add_to_fwd_db_map db i = 
+    if i < 0 then invalid_arg "add_to_fwd_db_map" else
+      add_to_fwd_db_map' (List.length db) db i
 
 
   (* Pretty-print a list of typed variables *)
-  let rec pp_print_typed_var_list db ppf = function 
+  let rec pp_print_typed_var_list i fwd_db_map ppf = function 
 
     (* Print nothing for the empty list *)
     | [] -> ()
@@ -723,36 +734,39 @@ struct
     (* Print the first typed variable *)
     | s :: tl -> 
 
-      (* Increment variable index *)
-      let db' = succ db in
-
-      (* Print variable as (Xn t) *)
+      (* Lookup forward de Bruijn index of variable and print together
+         with its type *)
       Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" 
-        T.pp_print_bound_var db' 
+        T.pp_print_bound_var 
+        (try List.nth fwd_db_map i with Not_found -> assert false)
         T.pp_print_sort s;
 
       (* Add space and recurse if more bindings follow *)
       if not (tl = []) then 
         (Format.pp_print_space ppf (); 
-         pp_print_typed_var_list db' ppf tl)
+         pp_print_typed_var_list (succ i) fwd_db_map ppf tl)
 
 
   (* Pretty-print a lambda abstraction given the de Bruijn index of
      the most recent bound variable *)
-  let rec pp_print_lambda' pp_symbol db ppf = function 
+  let rec pp_print_lambda' pp_symbol fwd_db_map ppf = function 
 
-    | { H.node = L (l, t) } ->
+    | { H.node = L (x, t) } ->
+
+      (* Add a new mapping for each bound variable to its forward de
+         Bruijn index *)
+      let fwd_db_map' = add_to_fwd_db_map fwd_db_map (List.length x) in
 
       (* Print variables bound in abstraction and recurse with an
          incremented de Bruijn index *)
       Format.fprintf ppf
         "@[<hv 1>(lambda@ (%a)@ (%a))@]"
-        (pp_print_var_seq db) l
-        (pp_print_term' pp_symbol (db + (List.length l))) t
+        (pp_print_typed_var_list 0 fwd_db_map') x
+        (pp_print_term' pp_symbol fwd_db_map') t
 
 
   (* Pretty-print a list of variable term bindings *)
-  and pp_print_let_bindings pp_symbol i db ppf = function 
+  and pp_print_let_bindings pp_symbol i fwd_db_map fwd_db_map' ppf = function 
 
     (* Print nothing for the empty list *)
     | [] -> ()
@@ -760,34 +774,38 @@ struct
     (* Print the first binding *)
     | t :: tl -> 
 
-      (* Increment variable index *)
-      let db' = succ db in
-
       (* Print as binding as (Xn t) *)
       Format.fprintf 
         ppf 
         "@[<hv 1>(%a@ %a)@]" 
-        T.pp_print_bound_var db' 
-        (pp_print_term' pp_symbol (db - i)) t;
+        T.pp_print_bound_var 
+        (try List.nth fwd_db_map' i with Not_found -> assert false)
+        (pp_print_term' pp_symbol fwd_db_map) t;
 
       (* Add space and recurse if more bindings follow *)
       if not (tl = []) then 
         (Format.pp_print_space ppf (); 
-         pp_print_let_bindings pp_symbol (succ i) db' ppf tl)
+         pp_print_let_bindings pp_symbol (succ i) fwd_db_map fwd_db_map' ppf tl)
 
 
   (* Pretty-print an abstract term given the de Bruijn index of the
      most recent bound variable *)
-  and pp_print_term' pp_symbol db ppf = function 
+  and pp_print_term' pp_symbol fwd_db_map ppf = function 
 
     (* Delegate printing of free variables to function in input
        module *)
     | { H.node = FreeVar v } -> T.pp_print_var ppf v
 
-    (* Print bound variable with its de Bruijn index *)
-    | { H.node = BoundVar dbv } ->
+    (* Bound variable *)
+    | { H.node = BoundVar db } ->
 
-      Format.fprintf ppf "%a" T.pp_print_bound_var (db - dbv + 1)
+      (* Lookup forward de Bruijn index of variable and delegate
+         printing to function in input module *)
+      Format.fprintf
+        ppf
+        "%a"
+        T.pp_print_bound_var 
+        (try List.nth fwd_db_map (pred db) with Not_found -> assert false)
 
     (* Delegate printing of constant to function in input module *)
     | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
@@ -798,44 +816,53 @@ struct
       Format.fprintf ppf 
         "@[<hv 1>(%a@ %a)@]" 
         (pp_symbol ?arity:(Some (List.length a))) s 
-        (pp_print_term_list pp_symbol db) a
+        (pp_print_term_list pp_symbol fwd_db_map) a
 
     (* Print a let binding *)
-    | { H.node = Let ({ H.node = L (_, t) }, b) } -> 
+    | { H.node = Let ({ H.node = L (x, t) }, b) } -> 
+
+      (* Add a new index for each variable bound by the lambda *)
+      let fwd_db_map' = add_to_fwd_db_map fwd_db_map (List.length x) in
 
       Format.fprintf ppf 
         "@[<hv 1>(let@ @[<hv 1>(%a)@]@ %a)@]" 
-        (pp_print_let_bindings pp_symbol 0 db) b
-        (pp_print_term' pp_symbol (db + List.length b)) t
+        (pp_print_let_bindings pp_symbol 0 fwd_db_map fwd_db_map') b
+        (pp_print_term' pp_symbol fwd_db_map') t
 
     (* Print an existential quantification *)
     | { H.node = Exists { H.node = L (x, t) } } -> 
 
+      (* Add a new index for each variable bound by the lambda *)
+      let fwd_db_map' = add_to_fwd_db_map fwd_db_map (List.length x) in
+
       Format.fprintf ppf 
         "@[<hv 1>(exists@ @[<hv 1>(%a)@ %a@])@]" 
-        (pp_print_typed_var_list db) x
-        (pp_print_term' pp_symbol (db + List.length x)) t
+        (pp_print_typed_var_list 0 fwd_db_map') x
+        (pp_print_term' pp_symbol fwd_db_map') t
 
     (* Print a universal quantification *)
     | { H.node = Forall { H.node = L (x, t) } } -> 
 
+      (* Add a new index for each variable bound by the lambda *)
+      let fwd_db_map' = add_to_fwd_db_map fwd_db_map (List.length x) in
+
       Format.fprintf ppf 
         "@[<hv 1>(forall@ @[<hv 1>(%a)@ %a@])@]" 
-        (pp_print_typed_var_list db) x
-        (pp_print_term' pp_symbol (db + List.length x)) t
+        (pp_print_typed_var_list 0 fwd_db_map') x
+        (pp_print_term' pp_symbol fwd_db_map') t
 
     (* Print an annotated term *)
     | { H.node = Attr (t, a) } ->
 
       Format.fprintf ppf 
         "@[<hv 1>(!@ @[<hv 1>%a@] @[<hv 1>%a@])@]" 
-        (pp_print_term' pp_symbol db) t
+        (pp_print_term' pp_symbol fwd_db_map) t
         T.pp_print_attr a
 
 
   (* Pretty-print a list of abstract terms given the de Bruijn index
      of the most recent bound variable *)
-  and pp_print_term_list pp_symbol db ppf = function
+  and pp_print_term_list pp_symbol fwd_db_map ppf = function
 
     (* Terminate at end of list *)
     | [] -> ()
@@ -843,28 +870,28 @@ struct
     | t :: tl -> 
 
       (* Print term a head of list *)
-      pp_print_term' pp_symbol db ppf t;
+      pp_print_term' pp_symbol fwd_db_map ppf t;
 
       (* Continue if not at the end of the list *)
       if not (tl = []) then
         (Format.pp_print_space ppf ();
-         pp_print_term_list pp_symbol db ppf tl)
+         pp_print_term_list pp_symbol fwd_db_map ppf tl)
 
 
   (* Top-level pretty-printing function, start with given de Bruijn
      index or default to zero *)
-  let pp_print_term_w pp_symbol ?(db = 0) ppf term = 
+  let pp_print_term_w pp_symbol ppf term = 
 
     (* Pretty-print term into buffer *)
-    pp_print_term' pp_symbol db ppf term
+    pp_print_term' pp_symbol [] ppf term
 
  
   (* Top-level pretty-printing function, start with given de Bruijn
      index or default to zero *)
-  let pp_print_lambda_w pp_symbol ?(db = 0) ppf term = 
+  let pp_print_lambda_w pp_symbol ppf term = 
 
     (* Pretty-print term into buffer *)
-    pp_print_lambda' pp_symbol db ppf term
+    pp_print_lambda' pp_symbol [] ppf term
 
 
   (* Pretty-print a term *)
@@ -872,14 +899,14 @@ struct
 
 
   (* Pretty-print a term to the standard formatter *)
-  let print_term ?db = pp_print_term ?db Format.std_formatter
+  let print_term = pp_print_term Format.std_formatter
 
   (* Pretty-print a lambda abstraction *)
   let pp_print_lambda = pp_print_lambda_w (fun ?arity -> T.pp_print_symbol)
 
 
   (* Pretty-print a lambda abstraction to the standard formatter *)
-  let print_lambda ?db = pp_print_lambda ?db Format.std_formatter
+  let print_lambda = pp_print_lambda Format.std_formatter
 
     
   (* ********************************************************************* *)
@@ -1036,7 +1063,7 @@ struct
           List.fold_left
             (fun a t -> Subst (t, env) :: a)
             env
-            b
+            (List.rev b)
         in
 
         (* Push bound subterm with incremented index to the stack,
@@ -1549,7 +1576,7 @@ struct
 
     (* Associate each variable with its relative index in the
        binding *)
-    let dbm = List.mapi (fun i v -> (v, i)) (List.rev x) in
+    let dbm = List.mapi (fun i v -> (v, i)) x in
 
     (* Bind free variables in term in a new lambda *)
     hl_lambda 
@@ -1965,7 +1992,7 @@ struct
     | { H.node = Let ({ H.node = L (_, { H.node = BoundVar i }) }, l) } -> 
 
       (* Return assignment to bound variable *)
-      destruct' ofs (List.nth l (List.length l - i))
+      destruct' ofs (List.nth l (pred i))
 
     (* Let binding of an annotated term *)
     | { H.node = Let ({ H.node = L (i, { H.node = Attr (t, a) }) }, b) } -> 
@@ -2190,7 +2217,7 @@ module T = Make (TestTypes)
 
 ;;
 
-let print_term t = Format.printf "%a@." (T.pp_print_term ~db:0) t 
+let print_term t = Format.printf "%a@." T.pp_print_term t 
 
 
 let f_12 = T.mk_app 'f' [(T.mk_var 1); (T.mk_var 2)] 
@@ -2211,6 +2238,87 @@ let t2 = T.mk_let_elim [(1, T.mk_app 'a' [])] f_12 |> T.mk_let [(2, T.mk_app 'b'
 let () = print_term t2
 
 
+let v_1 = T.mk_var 1
+let v_2 = T.mk_var 2
+let v_3 = T.mk_var 3
+let v_4 = T.mk_var 4
+
+let f_3412 = T.mk_app 'f' [v_3; v_4; v_1; v_2] 
+let g_3412 = T.mk_app 'g' [v_3; v_4; v_1; v_2] 
+let m_3412 = T.mk_app 'm' [v_3; v_4; v_1; v_2] 
+let k_3412 = T.mk_app 'k' [v_3; v_4; v_1; v_2] 
+
+let h_12 = T.mk_app 'h' [v_1; v_2]
+let j_21 = T.mk_app 'j' [v_2; v_1]
+
+
+let l_12 = T.mk_app 'l' [v_1; v_2]
+
+let n_12 = T.mk_app 'n' [v_1; v_2]
+
+let a_ = T.mk_app 'a' []
+let b_ = T.mk_app 'b' []
+let c_ = T.mk_app 'c' []
+
+let t_3 = T.mk_let [(3, h_12); (4, j_21)] g_3412
+
+let t_3_l = T.mk_let_elim [(0, a_); (3, h_12); (0, a_); (4, j_21); (0, a_)] g_3412
+
+let t_3_e = T.mk_exists [3; 4] g_3412
+
+let _ = Format.printf "t_3: %a@." T.pp_print_term t_3
+
+let _ = Format.printf "t_3_e: %a@." T.pp_print_term t_3_e
+
+let _ = Format.printf "t_3_l: %a@." T.pp_print_term t_3_l
+
+let t_2 = T.mk_let [(3, t_3); (4, l_12)] f_3412
+
+let t_2_l = T.mk_let_elim [(0, a_); (3, t_3); (0, a_); (4, l_12); (0, a_)] f_3412
+
+let t_2_u = T.mk_forall [3; 4] f_3412
+
+let _ = Format.printf "t_2: %a@." T.pp_print_term t_2
+
+let _ = Format.printf "t_2_l: %a@." T.pp_print_term t_2_l
+
+let _ = Format.printf "t_2_u: %a@." T.pp_print_term t_2_u
+
+let t_5 = T.mk_let [(3, b_); (4, c_)] k_3412
+
+let t_5_l = T.mk_let_elim [(0, a_); (3, b_); (0, a_); (4, c_); (0, a_)] k_3412
+
+let t_5_e = T.mk_exists [3; 4] k_3412
+
+let _ = Format.printf "t_5: %a@." T.pp_print_term t_5
+
+let _ = Format.printf "t_5_l: %a@." T.pp_print_term t_5_l
+
+let _ = Format.printf "t_5_e: %a@." T.pp_print_term t_5_e
+
+let t_4 = T.mk_let [(3, n_12); (4, t_5)] m_3412
+
+let t_4_l = T.mk_let_elim [(0, a_); (3, n_12); (0, a_); (4, t_5); (0, a_)] m_3412
+
+let t_4_u = T.mk_forall [3; 4] m_3412
+
+let _ = Format.printf "t_4: %a@." T.pp_print_term t_4
+
+let _ = Format.printf "t_4_l: %a@." T.pp_print_term t_4_l
+
+let _ = Format.printf "t_4_u: %a@." T.pp_print_term t_4_u
+
+let t_1 = T.mk_let [(1, t_4); (2, a_)] t_2
+
+let t_1_l = T.mk_let_elim [(0, a_); (1, t_4); (0, a_); (2, a_); (0, a_)] t_2
+
+let t_1_e = T.mk_exists [1; 2] t_2_u
+
+let _ = Format.printf "t_1: %a@." T.pp_print_term t_1
+
+let _ = Format.printf "t_1_l: %a@." T.pp_print_term t_1_l
+
+let _ = Format.printf "t_1_e: %a@." T.pp_print_term t_1_e
   
 (* 
    Local Variables:

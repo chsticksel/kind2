@@ -287,10 +287,10 @@ let assert_actlits solver actlits terms =
       let uf_symbol =
 
         (* Term must be a constant *)
-        assert (Term.T.is_leaf t);
+        assert (Term.T.is_const t);
 
         (* Get symbol of constant *)
-        Term.T.leaf_of_t t
+        Term.T.const_of_t t
 
         |> (fun s ->
 

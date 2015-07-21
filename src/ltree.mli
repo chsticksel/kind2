@@ -561,25 +561,25 @@ sig
   val import_lambda : 'a lambda -> 'a lambda
 
   (** Pretty-print a term *)
-  val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
+  val pp_print_term : Format.formatter -> 'a t -> unit
 
   (** Pretty-print a term *)
-  val pp_print_term : ?db:int -> Format.formatter -> 'a t -> unit
+  val pp_print_term : Format.formatter -> 'a t -> unit
 
   val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> 'a lambda -> unit
+    Format.formatter -> 'a lambda -> unit
 
   val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    ?db:int -> Format.formatter -> 'a t -> unit
+    Format.formatter -> 'a t -> unit
 
   (** Pretty-print a term *)
-  val print_term : ?db:int -> 'a t -> unit
+  val print_term : 'a t -> unit
 
   (** Pretty-print a lambda abstraction *)
-  val pp_print_lambda : ?db:int -> Format.formatter -> 'a lambda -> unit
+  val pp_print_lambda : Format.formatter -> 'a lambda -> unit
 
   (** Pretty-print a lambda abstraction *)
-  val print_lambda : ?db:int -> 'a lambda -> unit
+  val print_lambda : 'a lambda -> unit
 
   val stats : unit -> int * int * int * int * int * int
   
