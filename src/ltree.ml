@@ -738,7 +738,7 @@ struct
          with its type *)
       Format.fprintf ppf "@[<hv 1>(%a@ %a)@]" 
         T.pp_print_bound_var 
-        (try List.nth fwd_db_map i with Not_found -> assert false)
+        (try List.nth fwd_db_map i with Failure _ -> assert false)
         T.pp_print_sort s;
 
       (* Add space and recurse if more bindings follow *)
@@ -779,7 +779,7 @@ struct
         ppf 
         "@[<hv 1>(%a@ %a)@]" 
         T.pp_print_bound_var 
-        (try List.nth fwd_db_map' i with Not_found -> assert false)
+        (try List.nth fwd_db_map' i with Failure _ -> assert false)
         (pp_print_term' pp_symbol fwd_db_map) t;
 
       (* Add space and recurse if more bindings follow *)
@@ -805,7 +805,7 @@ struct
         ppf
         "%a"
         T.pp_print_bound_var 
-        (try List.nth fwd_db_map (pred db) with Not_found -> assert false)
+        (try List.nth fwd_db_map (pred db) with Failure _ -> assert false)
 
     (* Delegate printing of constant to function in input module *)
     | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
@@ -2219,7 +2219,15 @@ module T = Make (TestTypes)
 
 let print_term t = Format.printf "%a@." T.pp_print_term t 
 
+let pp_print_top ppf = function
+  | T.Var v -> Format.fprintf ppf "Var %d" v
+  | T.App (s, l) -> Format.fprintf ppf "App %c" s
+  | T.Attr (_,_) -> Format.fprintf ppf "Attr" 
+  | T.Exists _ -> Format.fprintf ppf "Exists"
+  | T.Forall _ -> Format.fprintf ppf "Forall"
 
+let print_top ppf t = pp_print_top Format.std_formatter
+  
 let f_12 = T.mk_app 'f' [(T.mk_var 1); (T.mk_var 2)] 
 
 let t1 =
@@ -2265,6 +2273,8 @@ let t_3 = T.mk_let [(3, h_12); (4, j_21)] g_3412
 let t_3_l = T.mk_let_elim [(0, a_); (3, h_12); (0, a_); (4, j_21); (0, a_)] g_3412
 
 let t_3_e = T.mk_exists [3; 4] g_3412
+
+let _ = T.map (fun e t -> let f = T.destruct_unsafe e t in Format.printf "%a@." pp_print_top f; None) t_3_e
 
 let _ = Format.printf "t_3: %a@." T.pp_print_term t_3
 
