@@ -561,25 +561,43 @@ sig
   val import_lambda : 'a lambda -> 'a lambda
 
   (** Pretty-print a term *)
-  val pp_print_term : Format.formatter -> 'a t -> unit
+  val pp_print_term : Format.formatter -> safe t -> unit
 
-  (** Pretty-print a term *)
-  val pp_print_term : Format.formatter -> 'a t -> unit
+  (** Pretty-print an unsafe term given its environment *)
+  val pp_print_term_unsafe : 'a env -> Format.formatter -> 'b t -> unit
 
-  val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    Format.formatter -> 'a lambda -> unit
+  (** Pretty-print a lambda abstraction with an arity-aware printer for symbols *)
+  val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> safe lambda -> unit
 
+  (** Pretty-print an unsafe lambda abstraction with an arity-aware
+      printer for symbols given its environment *)
+  val pp_print_lambda_w_unsafe : 'a env -> (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> 'b lambda -> unit
+
+  (** Pretty-print a term with an arity-aware printer for symbols *)
   val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    Format.formatter -> 'a t -> unit
+    Format.formatter -> safe t -> unit
+
+  (** Pretty-print an unsafe term with an arity-aware printer for
+      symbols given its environment *)
+  val pp_print_term_w_unsafe : 'a env -> (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> 'b t -> unit
 
   (** Pretty-print a term *)
-  val print_term : 'a t -> unit
+  val print_term : safe t -> unit
+
+  (** Pretty-print an unsafe term given its environment *)
+  val print_term_unsafe : 'a env -> 'b t -> unit
 
   (** Pretty-print a lambda abstraction *)
-  val pp_print_lambda : Format.formatter -> 'a lambda -> unit
+  val pp_print_lambda : Format.formatter -> safe lambda -> unit
+
+  (** Pretty-print an unsafe lambda abstraction given its environment *)
+  val pp_print_lambda_unsafe : 'a env -> Format.formatter -> 'b lambda -> unit
 
   (** Pretty-print a lambda abstraction *)
-  val print_lambda : 'a lambda -> unit
+  val print_lambda : safe lambda -> unit
+
+  (** Pretty-print an unsafe lambda abstraction given its environment *)
+  val print_lambda_unsafe : 'a env -> 'b lambda -> unit
 
   val stats : unit -> int * int * int * int * int * int
   

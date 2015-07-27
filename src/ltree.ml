@@ -208,19 +208,29 @@ sig
 
   val import_lambda : 'a lambda -> 'a lambda
 
-  val pp_print_term : Format.formatter -> 'a t -> unit
+  val pp_print_term : Format.formatter -> safe t -> unit
+
+  val pp_print_term_unsafe : 'a env -> Format.formatter -> 'b t -> unit
     
-  val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    Format.formatter -> 'a lambda -> unit
+  val pp_print_lambda_w : (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> safe lambda -> unit
 
-  val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) ->
-    Format.formatter -> 'a t -> unit
+  val pp_print_lambda_w_unsafe : 'a env -> (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> 'b lambda -> unit
 
-  val print_term : 'a t -> unit
+  val pp_print_term_w : (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> safe t -> unit
 
-  val pp_print_lambda : Format.formatter -> 'a lambda -> unit
+  val pp_print_term_w_unsafe : 'a env -> (?arity:int -> Format.formatter -> symbol -> unit) -> Format.formatter -> 'b t -> unit
+
+  val print_term : safe t -> unit
+
+  val print_term_unsafe : 'a env -> 'b t -> unit
+
+  val pp_print_lambda : Format.formatter -> safe lambda -> unit
     
-  val print_lambda : 'a lambda -> unit
+  val pp_print_lambda_unsafe : 'a env -> Format.formatter -> 'b lambda -> unit
+    
+  val print_lambda : safe lambda -> unit
+
+  val print_lambda_unsafe : 'a env -> 'b lambda -> unit
 
   val stats : unit -> int * int * int * int * int * int
 
@@ -749,7 +759,7 @@ struct
 
   (* Pretty-print a lambda abstraction given the de Bruijn index of
      the most recent bound variable *)
-  let rec pp_print_lambda' pp_symbol fwd_db_map ppf = function 
+  let rec pp_print_lambda' offset pp_symbol fwd_db_map ppf = function 
 
     | { H.node = L (x, t) } ->
 
@@ -762,11 +772,11 @@ struct
       Format.fprintf ppf
         "@[<hv 1>(lambda@ (%a)@ (%a))@]"
         (pp_print_typed_var_list 0 fwd_db_map') x
-        (pp_print_term' pp_symbol fwd_db_map') t
+        (pp_print_term' offset pp_symbol fwd_db_map') t
 
 
   (* Pretty-print a list of variable term bindings *)
-  and pp_print_let_bindings pp_symbol i fwd_db_map fwd_db_map' ppf = function 
+  and pp_print_let_bindings offset pp_symbol i fwd_db_map fwd_db_map' ppf = function 
 
     (* Print nothing for the empty list *)
     | [] -> ()
@@ -780,17 +790,24 @@ struct
         "@[<hv 1>(%a@ %a)@]" 
         T.pp_print_bound_var 
         (try List.nth fwd_db_map' i with Failure _ -> assert false)
-        (pp_print_term' pp_symbol fwd_db_map) t;
+        (pp_print_term' offset pp_symbol fwd_db_map) t;
 
       (* Add space and recurse if more bindings follow *)
       if not (tl = []) then 
         (Format.pp_print_space ppf (); 
-         pp_print_let_bindings pp_symbol (succ i) fwd_db_map fwd_db_map' ppf tl)
+         pp_print_let_bindings
+           offset
+           pp_symbol
+           (succ i)
+           fwd_db_map
+           fwd_db_map'
+           ppf
+           tl)
 
 
   (* Pretty-print an abstract term given the de Bruijn index of the
      most recent bound variable *)
-  and pp_print_term' pp_symbol fwd_db_map ppf = function 
+  and pp_print_term' offset pp_symbol fwd_db_map ppf = function 
 
     (* Delegate printing of free variables to function in input
        module *)
@@ -805,7 +822,7 @@ struct
         ppf
         "%a"
         T.pp_print_bound_var 
-        (try List.nth fwd_db_map (pred db) with Failure _ -> assert false)
+        (try List.nth fwd_db_map (pred db - offset) with Failure _ -> assert false)
 
     (* Delegate printing of constant to function in input module *)
     | { H.node = App (s, []) } -> pp_symbol ?arity:(Some 0) ppf s
@@ -816,7 +833,7 @@ struct
       Format.fprintf ppf 
         "@[<hv 1>(%a@ %a)@]" 
         (pp_symbol ?arity:(Some (List.length a))) s 
-        (pp_print_term_list pp_symbol fwd_db_map) a
+        (pp_print_term_list offset pp_symbol fwd_db_map) a
 
     (* Print a let binding *)
     | { H.node = Let ({ H.node = L (x, t) }, b) } -> 
@@ -826,8 +843,8 @@ struct
 
       Format.fprintf ppf 
         "@[<hv 1>(let@ @[<hv 1>(%a)@]@ %a)@]" 
-        (pp_print_let_bindings pp_symbol 0 fwd_db_map fwd_db_map') b
-        (pp_print_term' pp_symbol fwd_db_map') t
+        (pp_print_let_bindings offset pp_symbol 0 fwd_db_map fwd_db_map') b
+        (pp_print_term' offset pp_symbol fwd_db_map') t
 
     (* Print an existential quantification *)
     | { H.node = Exists { H.node = L (x, t) } } -> 
@@ -838,7 +855,7 @@ struct
       Format.fprintf ppf 
         "@[<hv 1>(exists@ @[<hv 1>(%a)@ %a@])@]" 
         (pp_print_typed_var_list 0 fwd_db_map') x
-        (pp_print_term' pp_symbol fwd_db_map') t
+        (pp_print_term' offset pp_symbol fwd_db_map') t
 
     (* Print a universal quantification *)
     | { H.node = Forall { H.node = L (x, t) } } -> 
@@ -849,20 +866,20 @@ struct
       Format.fprintf ppf 
         "@[<hv 1>(forall@ @[<hv 1>(%a)@ %a@])@]" 
         (pp_print_typed_var_list 0 fwd_db_map') x
-        (pp_print_term' pp_symbol fwd_db_map') t
+        (pp_print_term' offset pp_symbol fwd_db_map') t
 
     (* Print an annotated term *)
     | { H.node = Attr (t, a) } ->
 
       Format.fprintf ppf 
         "@[<hv 1>(!@ @[<hv 1>%a@] @[<hv 1>%a@])@]" 
-        (pp_print_term' pp_symbol fwd_db_map) t
+        (pp_print_term' offset pp_symbol fwd_db_map) t
         T.pp_print_attr a
 
 
   (* Pretty-print a list of abstract terms given the de Bruijn index
      of the most recent bound variable *)
-  and pp_print_term_list pp_symbol fwd_db_map ppf = function
+  and pp_print_term_list offset pp_symbol fwd_db_map ppf = function
 
     (* Terminate at end of list *)
     | [] -> ()
@@ -870,43 +887,80 @@ struct
     | t :: tl -> 
 
       (* Print term a head of list *)
-      pp_print_term' pp_symbol fwd_db_map ppf t;
+      pp_print_term' offset pp_symbol fwd_db_map ppf t;
 
       (* Continue if not at the end of the list *)
       if not (tl = []) then
         (Format.pp_print_space ppf ();
-         pp_print_term_list pp_symbol fwd_db_map ppf tl)
+         pp_print_term_list offset pp_symbol fwd_db_map ppf tl)
 
 
   (* Top-level pretty-printing function, start with given de Bruijn
      index or default to zero *)
   let pp_print_term_w pp_symbol ppf term = 
+    pp_print_term' 0 pp_symbol [] ppf term
 
-    (* Pretty-print term into buffer *)
-    pp_print_term' pp_symbol [] ppf term
+ 
+  (* Top-level pretty-printing function, start with given de Bruijn
+     index or default to zero *)
+  let pp_print_term_w_unsafe env pp_symbol ppf term = 
+    pp_print_term'
+      (List.length env)
+      pp_symbol
+      (add_to_fwd_db_map [] (List.length env))
+      ppf
+      term
 
  
   (* Top-level pretty-printing function, start with given de Bruijn
      index or default to zero *)
   let pp_print_lambda_w pp_symbol ppf term = 
+    pp_print_lambda' 0 pp_symbol [] ppf term
 
-    (* Pretty-print term into buffer *)
-    pp_print_lambda' pp_symbol [] ppf term
+      
+  (* Top-level pretty-printing function, start with given de Bruijn
+     index or default to zero *)
+  let pp_print_lambda_w_unsafe env pp_symbol ppf term = 
+    pp_print_lambda' (List.length env) pp_symbol [] ppf term
+
+      
+  (* Pretty-print a term *)
+  let pp_print_term = pp_print_term_w (fun ?arity -> T.pp_print_symbol)
 
 
   (* Pretty-print a term *)
-  let pp_print_term = pp_print_term_w (fun ?arity -> T.pp_print_symbol)
+  let pp_print_term_unsafe env =
+    pp_print_term_w_unsafe
+      env
+      (fun ?arity -> T.pp_print_symbol)
 
 
   (* Pretty-print a term to the standard formatter *)
   let print_term = pp_print_term Format.std_formatter
 
+    
+  (* Pretty-print a term to the standard formatter *)
+  let print_term_unsafe env = pp_print_term_unsafe env Format.std_formatter
+
+    
   (* Pretty-print a lambda abstraction *)
   let pp_print_lambda = pp_print_lambda_w (fun ?arity -> T.pp_print_symbol)
 
 
+  (* Pretty-print a lambda abstraction *)
+  let pp_print_lambda_unsafe env =
+    pp_print_lambda_w_unsafe
+      env
+      (fun ?arity -> T.pp_print_symbol)
+
+
   (* Pretty-print a lambda abstraction to the standard formatter *)
   let print_lambda = pp_print_lambda Format.std_formatter
+
+    
+  (* Pretty-print a lambda abstraction to the standard formatter *)
+  let print_lambda_unsafe env =
+    pp_print_lambda_unsafe env Format.std_formatter
 
     
   (* ********************************************************************* *)
@@ -2274,7 +2328,7 @@ let t_3_l = T.mk_let_elim [(0, a_); (3, h_12); (0, a_); (4, j_21); (0, a_)] g_34
 
 let t_3_e = T.mk_exists [3; 4] g_3412
 
-let _ = T.map (fun e t -> let f = T.destruct_unsafe e t in Format.printf "%a@." pp_print_top f; None) t_3_e
+let _ = T.map (fun e t -> Format.printf "X@."; Format.printf "%a@." (T.pp_print_term_unsafe e) t; None) t_3_e
 
 let _ = Format.printf "t_3: %a@." T.pp_print_term t_3
 
