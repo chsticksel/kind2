@@ -35,11 +35,11 @@
     node calls in a Lustre expression. They have to be abstracted out
     and the results are captured in fresh variables. See
     {!LustreSimplify} for details about how the input file is
-    translates
+    translated.
 
     The offsets of state variable instances are zero for the initial
     state and zero for the current state, see the constants
-    {!init_offset} and {!trans_offset} and {!pre_offset}. These are
+    {!base_offset} and {!cur_offset} and {!pre_offset}. These are
     different from the offsets in the transition system, because here
     we want to know if the initial and the step expressions are equal
     without bumping offsets. Use the functions {!base_term_of_expr},

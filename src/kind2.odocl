@@ -2,7 +2,7 @@ Analysis
 Event
 Flags
 InvarManager
-# Kind2
+Kind2
 MonolithicStrategy
 # Refiner
 Eval          
@@ -18,7 +18,7 @@ Term
 Type
 UfSymbol
 Var
-# InputSystem
+InputSystem
 Property
 SubSystem
 TransSys

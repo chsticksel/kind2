@@ -22,7 +22,7 @@
             {- {%html: <a href="#input_native">%}Native{%html: </a>%}}
             {- {%html: <a href="#input_horn">%}Horn{%html: </a>%}}
        }}
-       {- {%html: <a href="#smt">%}SMT Sulver Interface{%html: </a>%}
+       {- {%html: <a href="#smt">%}SMT Solver Interface{%html: </a>%}
           {ul
             {- {%html: <a href="#smtlib">%}SMTLIB Interface{%html: </a>%}}
             {- {%html: <a href="#yices">%}Yices Interface{%html: </a>%}}
@@ -95,7 +95,7 @@ Overall system architecture
   CooperQE
   Extract
   Literal
-  PDR
+  IC3
   Poly
   Presburger
   QE
