@@ -364,6 +364,10 @@ let uneval_eq_lhs ctx = function
                ctx
                (I.mk_string_ident v)
            in
+
+           (* New scope for local declarations *)
+           let ctx = C.pop_scope ctx in
+           
            ctx)
         ctx
         (List.rev l)
@@ -498,6 +502,9 @@ let rec eval_eq_lhs ctx pos = function
     let _, ctx = 
       List.fold_left 
         (fun (i, ctx) v -> 
+
+           (* New scope for local declarations *)
+           let ctx = C.push_scope ctx "array" in
 
            (* Get an expression for the i-th index variable *)
            let expr = E.mk_index_var i in
