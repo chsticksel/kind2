@@ -1366,7 +1366,7 @@ let rec constraints_of_equations
     | [] -> terms 
 
     (* Stateful variable must have an equational constraint *)
-    | (state_var, [], { E.expr_init; E.expr_step }) :: tl 
+    | (state_var, [], { E.expr_init; E.expr_step; E.expr_type }) :: tl 
       when List.exists (StateVar.equal_state_vars state_var) stateful_vars -> 
 
       (* Equation for stateful variable *)
@@ -1391,12 +1391,69 @@ let rec constraints_of_equations
 
       in
 
+      let terms' = 
+
+      if 
+
+        (* State variable declared as integer, but type of expression
+           inferred as integer range? *)
+        StateVar.type_of_state_var state_var |> Type.is_int &&
+        Type.is_int_range expr_type 
+
+        ||
+
+        (* State variable declared as integer range, but type of
+           expression inferred as stricter integer range? *)
+        StateVar.type_of_state_var state_var |> Type.is_int_range &&
+        Type.is_int_range expr_type &&
+        (let l1, u1 = 
+           StateVar.type_of_state_var state_var
+           |> Type.bounds_of_int_range 
+         in
+         let l2, u2 = Type.bounds_of_int_range expr_type in
+         Numeral.(l1 < l2) && Numeral.(u1 > u2)) 
+        
+      then
+        
+        (* Get bounds of integer range *)
+        let l, u = Type.bounds_of_int_range expr_type in
+
+        (* Bounds are equal? *)
+        if Numeral.equal l u then 
+
+          (* Most likely the equation is already [x = 0], don't add
+             the same constraint again *)
+          def :: terms 
+          
+        else
+          
+          (* Create range constraint [l <= x <= u] *)
+          let rng = 
+            Term.mk_leq
+              [Term.mk_num l;
+               (if init then 
+                  E.base_term_of_state_var TransSys.init_base state_var
+                else
+                  E.cur_term_of_state_var TransSys.trans_base state_var);
+               Term.mk_num u]
+          in
+          
+          (* Add range constraint to definition *)
+          def :: rng :: terms 
+          
+      else
+        
+        (* No range constraint *)
+        def :: terms 
+        
+      in
+
       (* Add terms of equation *)
       constraints_of_equations 
         init
         stateful_vars
         instance
-        (def :: terms)
+        terms'
         tl
 
 

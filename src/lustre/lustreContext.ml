@@ -1537,6 +1537,10 @@ let add_node_equation ctx pos state_var bounds indexes expr =
 
       in
 
+      (* Don't do this: if the state variable is of array type, this will
+         remove the array type and replace it with an integer. *)
+
+(*
       if 
 
         (* State variable declared as integer, but type of expression
@@ -1568,6 +1572,8 @@ let add_node_equation ctx pos state_var bounds indexes expr =
            to re-type all expressions the contain the variable, and
            then continue recursively. *)
         StateVar.change_type_of_state_var state_var expr_type;
+
+*)
 
       (* Return node with equation added *)
       match ctx with 
